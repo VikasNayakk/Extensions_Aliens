@@ -1,26 +1,6 @@
 import {localAnalyze,redactSensitiveText,SYSTEM_PROMPT} from "./analyzer.js";
-
-chrome.action.onClicked.addListener(async tab=>{
-  if(tab?.id) await chrome.sidePanel.open({tabId:tab.id});
-});
-
-chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
-  if(message?.type!=="ANALYZE_MESSAGES")return;
-  analyze(message.text).then(sendResponse).catch(error=>sendResponse({output:"Analysis error: "+error.message,remote:false}));
-  return true;
-});
-
-async function analyze(input){
-  const settings=await chrome.storage.local.get(["apiKey","model","redact"]);
-  const safeText=settings.redact===false?String(input):redactSensitiveText(input);
-  if(!settings.apiKey)return {output:localAnalyze(safeText),remote:false};
-  const response=await fetch("https://api.openai.com/v1/chat/completions",{
-    method:"POST",
-    headers:{"Authorization":"Bearer "+settings.apiKey,"Content-Type":"application/json"},
-    body:JSON.stringify({model:settings.model||"gpt-4.1-mini",temperature:0,messages:[{role:"system",content:SYSTEM_PROMPT},{role:"user",content:safeText}]})
-  });
-  if(!response.ok)throw new Error("AI API returned HTTP "+response.status);
-  const data=await response.json();const output=data.choices?.[0]?.message?.content?.trim();
-  if(!output)throw new Error("AI response was empty");
-  return {output,remote:true};
-}
+chrome.action.onClicked.addListener(async tab=>{if(tab?.id)await chrome.sidePanel.open({tabId:tab.id});});
+chrome.runtime.onMessage.addListener((m,s,send)=>{if(m?.type==="ANALYZE_MESSAGES"){analyze(m.text).then(send).catch(e=>send({output:"Analysis error: "+e.message,remote:false}));return true;}if(m?.type==="TEST_OPENAI"){testApi().then(send).catch(e=>send({ok:false,error:e.message}));return true;}});
+async function requestOpenAI(key,model,messages){let r;try{r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},body:JSON.stringify({model,temperature:0,messages})});}catch(e){throw Error("Network/CORS error: "+e.message);}const data=await r.json().catch(()=>({}));if(!r.ok){const detail=data?.error?.message||data?.error?.code||("HTTP "+r.status);throw Error("OpenAI API "+r.status+": "+detail);}const output=data.choices?.[0]?.message?.content?.trim();if(!output)throw Error("OpenAI returned an empty response.");return output;}
+async function testApi(){const s=await chrome.storage.local.get(["apiKey","model"]);if(!s.apiKey)throw Error("Save an API key first.");await requestOpenAI(s.apiKey,s.model||"gpt-4.1-mini",[{role:"user",content:"Reply with exactly: API connection successful"}]);return {ok:true,model:s.model||"gpt-4.1-mini"};}
+async function analyze(input){const s=await chrome.storage.local.get(["apiKey","model","redact"]);const safe=s.redact===false?String(input):redactSensitiveText(input);if(!s.apiKey)return {output:localAnalyze(safe),remote:false};const output=await requestOpenAI(s.apiKey,s.model||"gpt-4.1-mini",[{role:"system",content:SYSTEM_PROMPT},{role:"user",content:safe}]);return {output,remote:true};}
