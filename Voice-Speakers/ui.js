@@ -113,7 +113,7 @@ async function loadConversation() {
                 const text = extractText(userNode, "user");
                 if (text) messages.push({ role: "user", text, order: index * 2 });
               }
-              if (assistantNode && !userNode) {
+              if (assistantNode) {
                 const text = extractText(assistantNode, "assistant");
                 if (text) messages.push({ role: "assistant", text, order: index * 2 + 1 });
               }
@@ -184,8 +184,15 @@ async function loadConversation() {
       $("selected").hidden = true;
       setStatus("No prompts detected. Make sure the conversation is open and its messages are loaded, then refresh.");
     }
+    return true;
   } catch (error) {
+    pairs = [];
+    selectedId = null;
+    $("totalCount").textContent = "0";
+    $("selected").hidden = true;
+    render();
     setStatus(error && error.message ? error.message : "Could not read this conversation.");
+    return false;
   } finally {
     $("load").disabled = false;
     $("refresh").disabled = false;
@@ -386,8 +393,8 @@ $("clearSearch").addEventListener("click", () => {
 $("settings").addEventListener("click", () => chrome.runtime.openOptionsPage());
 $("speakSelected").addEventListener("click", () => speak(pairs.find(item => item.id === selectedId)));
 $("speakLatest").addEventListener("click", async () => {
-  await loadConversation();
-  speak(pairs[pairs.length - 1]);
+  const loaded = await loadConversation();
+  if (loaded && pairs.length) speak(pairs[pairs.length - 1]);
 });
 $("stop").addEventListener("click", () => stopSpeaking(true));
 $("copy").addEventListener("click", async () => {
