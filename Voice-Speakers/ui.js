@@ -54,86 +54,74 @@ async function loadConversation() {
         };
 
         const rawRoleNodes = Array.from(document.querySelectorAll(
-          '[data-message-author-role="user"], [data-message-author-role="assistant"]'
+          'main [data-message-author-role="user"], main [data-message-author-role="assistant"], [data-message-author-role="user"], [data-message-author-role="assistant"]'
         )).filter(visible);
 
         let messages = [];
+        const normalize = value => clean(value).replace(/\s+/g, " ").toLowerCase();
 
         if (rawRoleNodes.length) {
-          // Keep the outermost message node for a role. Nested copies are UI
-          // components inside the same message, not additional conversation messages.
+          // Drop same-role descendants; they are nested render copies, not messages.
           const roleNodes = rawRoleNodes.filter(node => {
             const role = node.getAttribute("data-message-author-role");
-            let parent = node.parentElement;
-            while (parent) {
-              if (parent.getAttribute && parent.getAttribute("data-message-author-role") === role) {
-                return false;
-              }
-              parent = parent.parentElement;
-            }
-            return true;
+            return !node.parentElement?.closest('[data-message-author-role="' + role + '"]');
           });
 
-          const grouped = new Map();
+          const seenInTurn = new Set();
           roleNodes.forEach((node, index) => {
             const role = node.getAttribute("data-message-author-role");
-            const turn = node.closest('[data-testid^="conversation-turn-"]');
-            const identity = turn || node;
-            const key = role + "::" + (
-              turn ? turn.getAttribute("data-testid") || "turn-" + index : "node-" + index
-            );
+            const turn = node.closest('[data-testid^="conversation-turn-"]') ||
+              node.closest("article") || node.parentElement;
             const text = extractText(node, role);
             if (!text) return;
 
-            if (!grouped.has(key)) {
-              grouped.set(key, { role, text, order: index, identity });
-            } else {
-              const existing = grouped.get(key);
-              if (text !== existing.text && !existing.text.includes(text)) {
-                existing.text += "\n\n" + text;
-              }
-            }
+            // Suppress duplicate DOM renderings only within the same turn.
+            // Identical prompts in different turns are retained.
+            const turnKey = turn && turn.getAttribute("data-testid")
+              ? turn.getAttribute("data-testid")
+              : "turn-index-" + index;
+            const dedupeKey = role + "::" + turnKey + "::" + normalize(text);
+            if (seenInTurn.has(dedupeKey)) return;
+            seenInTurn.add(dedupeKey);
+            messages.push({ role, text, order: index });
           });
 
-          messages = Array.from(grouped.values()).sort((a, b) => a.order - b.order);
+          messages.sort((a, b) => a.order - b.order);
         } else {
-          // Fallback for ChatGPT UI variants that do not expose message-author-role.
+          // Fallback: inspect individual conversation turns, then merge by DOM order.
           const turns = Array.from(document.querySelectorAll(
-            'article[data-testid^="conversation-turn-"], [data-testid^="conversation-turn-"]'
+            'main [data-testid^="conversation-turn-"], main article, [data-testid^="conversation-turn-"], article'
           )).filter(visible);
 
-          if (turns.length) {
-            turns.forEach((turn, index) => {
-              const userNode = turn.querySelector('[data-testid^="user-message"]');
-              const assistantNode = turn.querySelector(
-                '[data-testid^="assistant-message"], .markdown, [data-message-content]'
-              );
+          const uniqueTurns = turns.filter((turn, index) =>
+            !turns.slice(0, index).some(parent => parent.contains(turn))
+          );
 
-              if (userNode) {
-                const text = extractText(userNode, "user");
-                if (text) messages.push({ role: "user", text, order: index * 2 });
-              }
-              if (assistantNode) {
-                const text = extractText(assistantNode, "assistant");
-                if (text) messages.push({ role: "assistant", text, order: index * 2 + 1 });
-              }
-            });
-          } else {
-            const fallbackUsers = Array.from(document.querySelectorAll('[data-testid^="user-message"]'))
-              .filter(visible);
-            const fallbackAssistants = Array.from(document.querySelectorAll('[data-testid^="assistant-message"]'))
-              .filter(visible);
-            const fallback = fallbackUsers.map(node => ({ node, role: "user" }))
-              .concat(fallbackAssistants.map(node => ({ node, role: "assistant" })))
+          uniqueTurns.forEach((turn, index) => {
+            const userNodes = Array.from(turn.querySelectorAll(
+              '[data-testid^="user-message"], [data-message-author-role="user"]'
+            ));
+            const assistantNodes = Array.from(turn.querySelectorAll(
+              '[data-testid^="assistant-message"], [data-message-author-role="assistant"], .markdown'
+            ));
+
+            const local = userNodes.map(node => ({ node, role: "user" }))
+              .concat(assistantNodes.map(node => ({ node, role: "assistant" })))
+              .filter(item => !item.node.parentElement?.closest(
+                item.role === "user"
+                  ? '[data-testid^="user-message"], [data-message-author-role="user"]'
+                  : '[data-testid^="assistant-message"], [data-message-author-role="assistant"]'
+              ))
               .sort((a, b) => {
                 const position = a.node.compareDocumentPosition(b.node);
                 return position & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
               });
-            fallback.forEach(item => {
+
+            local.forEach(item => {
               const text = extractText(item.node, item.role);
-              if (text) messages.push({ role: item.role, text });
+              if (text) messages.push({ role: item.role, text, order: index });
             });
-          }
+          });
         }
 
         // Pair each user message with the assistant message(s) that follow it,
