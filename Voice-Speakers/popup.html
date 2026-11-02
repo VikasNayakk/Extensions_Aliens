@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Voice Speakers</title><link rel="stylesheet" href="styles.css"></head>
+<body class="popup">
+  <header class="top"><div class="brand-mark">VS</div><div><strong>Voice Speakers</strong><small>ALIENS · TEAM CHAT ASSISTANT</small></div><button id="settings" class="icon-btn" title="Settings">⚙</button></header>
+  <main>
+    <label for="chatText">Paste copied Teams messages</label>
+    <textarea id="chatText" placeholder="Paste the conversation here…"></textarea>
+    <div class="row"><button id="readClipboard" class="secondary">Paste clipboard</button><button id="analyze" class="primary">Analyze messages</button></div>
+    <p id="status" class="status" aria-live="polite">Messages are processed only after you submit them.</p>
+    <section id="resultWrap" hidden><div class="result-head"><strong>Spoken output</strong><button id="copy" class="text-btn">Copy</button></div><pre id="result"></pre><div class="row"><button id="speak" class="primary">Speak</button><button id="stop" class="secondary">Stop</button></div></section>
+  </main>
+  <footer><button id="openPanel" class="text-btn">Open side panel</button><span>Local-first · Credentials redacted</span></footer>
+  <script src="popup.js"></script>
+</body></html>
