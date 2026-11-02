@@ -34,15 +34,20 @@ async function loadConversation() {
         );
 
         const extractText = (element, role) => {
-          let content = element;
+          // Current ChatGPT markup places the role on a visually-hidden heading
+          // and the actual message body beside it in the same block.
+          const scope = element.closest(".block-BQZwFn") || element;
+          let content = scope;
           if (role === "user") {
-            content = element.querySelector(".whitespace-pre-wrap") ||
-              element.querySelector("[data-message-content]") ||
-              element;
+            content = scope.querySelector("[data-user-message-bubble]") ||
+              scope.querySelector(".whitespace-pre-wrap") ||
+              scope.querySelector("[data-message-content]") ||
+              scope;
           } else {
-            content = element.querySelector(".markdown") ||
-              element.querySelector("[data-message-content]") ||
-              element;
+            content = scope.querySelector('[data-markdown-text-style="assistant-message"]') ||
+              scope.querySelector(".markdown") ||
+              scope.querySelector("[data-message-content]") ||
+              scope;
           }
 
           const clone = content.cloneNode(true);
@@ -53,6 +58,10 @@ async function loadConversation() {
           return clean(clone.innerText || clone.textContent);
         };
 
+        const modernRoleNodes = Array.from(document.querySelectorAll(
+          'main [data-conversation-role="user"], main [data-conversation-role="assistant"], [data-conversation-role="user"], [data-conversation-role="assistant"]'
+        )).filter(visible);
+
         const rawRoleNodes = Array.from(document.querySelectorAll(
           'main [data-message-author-role="user"], main [data-message-author-role="assistant"], [data-message-author-role="user"], [data-message-author-role="assistant"]'
         )).filter(visible);
@@ -60,18 +69,22 @@ async function loadConversation() {
         let messages = [];
         const normalize = value => clean(value).replace(/\s+/g, " ").toLowerCase();
 
-        if (rawRoleNodes.length) {
-          // Drop same-role descendants; they are nested render copies, not messages.
-          const roleNodes = rawRoleNodes.filter(node => {
-            const role = node.getAttribute("data-message-author-role");
-            return !node.parentElement?.closest('[data-message-author-role="' + role + '"]');
+        if (modernRoleNodes.length || rawRoleNodes.length) {
+          // Prefer ChatGPT's current semantic role markers. Retain the older
+          // markers for compatibility with earlier ChatGPT layouts.
+          const roleAttribute = modernRoleNodes.length
+            ? "data-conversation-role"
+            : "data-message-author-role";
+          const roleNodes = (modernRoleNodes.length ? modernRoleNodes : rawRoleNodes).filter(node => {
+            const role = node.getAttribute(roleAttribute);
+            return !node.parentElement?.closest("[" + roleAttribute + '="' + role + '"]');
           });
 
           const seenInTurn = new Set();
           roleNodes.forEach((node, index) => {
-            const role = node.getAttribute("data-message-author-role");
+            const role = node.getAttribute(roleAttribute);
             const turn = node.closest('[data-testid^="conversation-turn-"]') ||
-              node.closest("article") || node.parentElement;
+              node.closest(".block-BQZwFn") || node.closest("article") || node.parentElement;
             const text = extractText(node, role);
             if (!text) return;
 
