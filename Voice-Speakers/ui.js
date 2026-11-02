@@ -1,16 +1,448 @@
-const $=id=>document.getElementById(id);let pairs=[],selectedId=null,voices=[];
-async function loadConversation(){ $("status").textContent="Detecting prompts in the open ChatGPT conversation…";$("load").disabled=true;try{const [tab]=await chrome.tabs.query({active:true,lastFocusedWindow:true});if(!tab?.id||!/^https:\/\/(chatgpt\.com|chat\.openai\.com)\//.test(tab.url||""))throw Error("Open the ChatGPT conversation tab, then click Load conversation.");const [{result}]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:()=>{
- const clean=s=>(s||"").replace(/\u200b/g,"").trim();
- const txt=n=>clean((n.querySelector(".markdown")||n.querySelector("[data-message-content]")||n).innerText);
- let nodes=[...document.querySelectorAll('[data-message-author-role]')].map(n=>({role:n.getAttribute("data-message-author-role"),text:txt(n)})).filter(x=>x.text);
- if(!nodes.length){const turns=[...document.querySelectorAll('article[data-testid^="conversation-turn-"], [data-testid^="conversation-turn-"]')];nodes=turns.map(t=>{const u=t.querySelector('[data-message-author-role="user"], [data-testid^="user-message"]'),a=t.querySelector('[data-message-author-role="assistant"]');if(u)return{role:"user",text:txt(u)};if(a)return{role:"assistant",text:txt(a)};return null;}).filter(Boolean);}
- // UI-based fallback: target ChatGPT's distinct user-message blocks, not arbitrary blue pixels.
- if(!nodes.some(x=>x.role==="user")){const candidates=[...document.querySelectorAll('[data-testid^="user-message"], .user-message-bubble, [class*="user-message"]')];const unique=[...new Set(candidates)];const found=unique.map(n=>({role:"user",text:txt(n)})).filter(x=>x.text);if(found.length)nodes=found;}
- const out=[];let p=null;for(const m of nodes){if(m.role==="user"){if(p)out.push(p);p={prompt:m.text,reply:""};}else if(m.role==="assistant"&&p)p.reply=m.text;}if(p)out.push(p);return out;
-}});pairs=(result||[]).map((p,i)=>({...p,id:String(i),index:i+1}));$("totalCount").textContent=pairs.length;render();if(pairs.length){select(pairs[pairs.length-1].id);$("status").textContent="Detected "+pairs.length+" prompts. Latest prompt selected.";}else{$("selected").hidden=true;$("status").textContent="No prompts detected. ChatGPT's page structure may have changed; reload the page and retry.";}}catch(e){$("status").textContent=e.message||"Could not read conversation.";}finally{$("load").disabled=false;}}
-function render(){const q=$("search").value.toLowerCase().trim(),shown=pairs.filter(p=>p.prompt.toLowerCase().includes(q));$("count").textContent=shown.length;$("clearSearch").hidden=!q;$("messages").replaceChildren();if(!shown.length){const d=document.createElement("div");d.className="empty";d.textContent=pairs.length?"No matching prompts.":"Load a conversation to see prompts."; $("messages").append(d);return;}for(const p of shown){const b=document.createElement("button");b.type="button";b.className="message-item"+(p.id===selectedId?" active":"");const top=document.createElement("div");top.className="message-top";const n=document.createElement("span");n.className="message-number";n.textContent="PROMPT "+p.index;const badge=document.createElement("span");badge.className="reply-badge "+(p.reply?"ready":"pending");badge.textContent=p.reply?"Reply ready":"Reply not detected";top.append(n,badge);const t=document.createElement("strong");t.textContent=p.prompt.replace(/\s+/g," ").slice(0,160);b.append(top,t);b.onclick=()=>select(p.id);$("messages").append(b);}}
-function select(id){selectedId=id;const p=pairs.find(x=>x.id===id);if(!p)return;$("selected").hidden=false;$("selectedTitle").textContent="Prompt "+p.index;$("promptText").textContent=p.prompt;$("replyText").textContent=p.reply||"No assistant reply detected for this prompt."; $("speakSelected").disabled=!p.reply;$("speakLatest").disabled=!pairs.length||!pairs[pairs.length-1].reply;render();}
-function voiceList(){voices=speechSynthesis.getVoices();const s=$("voice"),old=s.value;s.replaceChildren(new Option("System default","auto"),new Option("Female-sounding voice","female"),new Option("Male-sounding voice","male"));voices.forEach((v,i)=>s.add(new Option(v.name+" ("+v.lang+")","v"+i)));if([...s.options].some(o=>o.value===old))s.value=old;}
-function speak(p){if(!p?.reply){$("status").textContent="No reply is available to read. Refresh the conversation first.";return;}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(p.reply);u.rate=Number($("rate").value);const c=$("voice").value;if(c.startsWith("v"))u.voice=voices[Number(c.slice(1))]||null;else if(c!=="auto"){const re=c==="female"?/female|zira|samantha|victoria|karen|aria|jenny|susan|hazel|ava/i:/male|david|mark|guy|george|james|daniel/i;u.voice=voices.find(v=>re.test(v.name))||null;}speechSynthesis.speak(u);}
-async function loadSettings(){const s=await chrome.storage.local.get(["apiKey","model","voiceRate","voiceChoice"]);$("apiKey").value=s.apiKey||"";$("model").value=s.model||"gpt-4.1-mini";if(s.voiceRate){$("rate").value=s.voiceRate;$("rateValue").textContent=Number(s.voiceRate).toFixed(1)+"×";}if(s.voiceChoice)$("voice").value=s.voiceChoice;}
-$("load").onclick=loadConversation;$("refresh").onclick=loadConversation;$("search").oninput=render;$("clearSearch").onclick=()=>{$("search").value="";render();};$("settings").onclick=()=>chrome.runtime.openOptionsPage();$("speakSelected").onclick=()=>speak(pairs.find(p=>p.id===selectedId));$("speakLatest").onclick=async()=>{await loadConversation();speak(pairs[pairs.length-1]);};$("stop").onclick=()=>speechSynthesis.cancel();$("copy").onclick=async()=>{const p=pairs.find(x=>x.id===selectedId);if(p?.reply){await navigator.clipboard.writeText(p.reply);$("copy").textContent="Copied";setTimeout(()=>$("copy").textContent="Copy reply",1000);}};$("rate").oninput=()=>{$("rateValue").textContent=Number($("rate").value).toFixed(1)+"×";chrome.storage.local.set({voiceRate:Number($("rate").value)});};$("voice").onchange=()=>chrome.storage.local.set({voiceChoice:$("voice").value});$("saveKey").onclick=async()=>{const key=$("apiKey").value.trim();if(!key){$("apiStatus").textContent="Paste an API key first.";return;}await chrome.storage.local.set({apiKey:key,model:$("model").value.trim()||"gpt-4.1-mini"});$("apiStatus").textContent="Key saved in extension storage.";};$("testKey").onclick=async()=>{const key=$("apiKey").value.trim();if(key)await chrome.storage.local.set({apiKey:key,model:$("model").value.trim()||"gpt-4.1-mini"});$("apiStatus").textContent="Testing API…";try{const r=await chrome.runtime.sendMessage({type:"TEST_OPENAI"});$("apiStatus").textContent=r.ok?"API connection successful ("+r.model+").":r.error;}catch(e){$("apiStatus").textContent="Test failed: "+e.message;}};speechSynthesis.onvoiceschanged=voiceList;voiceList();loadSettings();loadConversation();
+const $ = id => document.getElementById(id);
+let pairs = [];
+let selectedId = null;
+let voices = [];
+let speechRun = 0;
+
+function setStatus(message) {
+  $("status").textContent = message;
+}
+
+async function loadConversation() {
+  $("status").textContent = "Detecting messages in the open ChatGPT conversation…";
+  $("load").disabled = true;
+  $("refresh").disabled = true;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (!tab || !tab.id || !/^https:\/\/(chatgpt\.com|chat\.openai\.com)\//.test(tab.url || "")) {
+      throw new Error("Open the ChatGPT conversation tab, then load the conversation.");
+    }
+
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        const clean = value => String(value || "")
+          .replace(/\u200b/g, "")
+          .replace(/\u00a0/g, " ")
+          .replace(/\r/g, "")
+          .trim();
+
+        const visible = element => !!element && (
+          element.getClientRects().length > 0 ||
+          element.offsetWidth > 0 ||
+          element.offsetHeight > 0
+        );
+
+        const extractText = (element, role) => {
+          let content = element;
+          if (role === "user") {
+            content = element.querySelector(".whitespace-pre-wrap") ||
+              element.querySelector("[data-message-content]") ||
+              element;
+          } else {
+            content = element.querySelector(".markdown") ||
+              element.querySelector("[data-message-content]") ||
+              element;
+          }
+
+          const clone = content.cloneNode(true);
+          clone.querySelectorAll(
+            "button, [role='button'], svg, script, style, nav, [aria-hidden='true'], [data-testid*='action'], [data-testid*='toolbar']"
+          ).forEach(node => node.remove());
+
+          return clean(clone.innerText || clone.textContent);
+        };
+
+        const rawRoleNodes = Array.from(document.querySelectorAll(
+          '[data-message-author-role="user"], [data-message-author-role="assistant"]'
+        )).filter(visible);
+
+        let messages = [];
+
+        if (rawRoleNodes.length) {
+          // Keep the outermost message node for a role. Nested copies are UI
+          // components inside the same message, not additional conversation messages.
+          const roleNodes = rawRoleNodes.filter(node => {
+            const role = node.getAttribute("data-message-author-role");
+            let parent = node.parentElement;
+            while (parent) {
+              if (parent.getAttribute && parent.getAttribute("data-message-author-role") === role) {
+                return false;
+              }
+              parent = parent.parentElement;
+            }
+            return true;
+          });
+
+          const grouped = new Map();
+          roleNodes.forEach((node, index) => {
+            const role = node.getAttribute("data-message-author-role");
+            const turn = node.closest('[data-testid^="conversation-turn-"]');
+            const identity = turn || node;
+            const key = role + "::" + (
+              turn ? turn.getAttribute("data-testid") || "turn-" + index : "node-" + index
+            );
+            const text = extractText(node, role);
+            if (!text) return;
+
+            if (!grouped.has(key)) {
+              grouped.set(key, { role, text, order: index, identity });
+            } else {
+              const existing = grouped.get(key);
+              if (text !== existing.text && !existing.text.includes(text)) {
+                existing.text += "\n\n" + text;
+              }
+            }
+          });
+
+          messages = Array.from(grouped.values()).sort((a, b) => a.order - b.order);
+        } else {
+          // Fallback for ChatGPT UI variants that do not expose message-author-role.
+          const turns = Array.from(document.querySelectorAll(
+            'article[data-testid^="conversation-turn-"], [data-testid^="conversation-turn-"]'
+          )).filter(visible);
+
+          if (turns.length) {
+            turns.forEach((turn, index) => {
+              const userNode = turn.querySelector('[data-testid^="user-message"]');
+              const assistantNode = turn.querySelector(
+                '[data-testid^="assistant-message"], .markdown, [data-message-content]'
+              );
+
+              if (userNode) {
+                const text = extractText(userNode, "user");
+                if (text) messages.push({ role: "user", text, order: index * 2 });
+              }
+              if (assistantNode && !userNode) {
+                const text = extractText(assistantNode, "assistant");
+                if (text) messages.push({ role: "assistant", text, order: index * 2 + 1 });
+              }
+            });
+          } else {
+            const fallbackUsers = Array.from(document.querySelectorAll('[data-testid^="user-message"]'))
+              .filter(visible);
+            const fallbackAssistants = Array.from(document.querySelectorAll('[data-testid^="assistant-message"]'))
+              .filter(visible);
+            const fallback = fallbackUsers.map(node => ({ node, role: "user" }))
+              .concat(fallbackAssistants.map(node => ({ node, role: "assistant" })))
+              .sort((a, b) => {
+                const position = a.node.compareDocumentPosition(b.node);
+                return position & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+              });
+            fallback.forEach(item => {
+              const text = extractText(item.node, item.role);
+              if (text) messages.push({ role: item.role, text });
+            });
+          }
+        }
+
+        // Pair each user message with the assistant message(s) that follow it,
+        // stopping at the next user message. Equal prompt text in separate turns
+        // is intentionally preserved as two distinct prompts.
+        const output = [];
+        let current = null;
+        for (const message of messages) {
+          if (message.role === "user") {
+            if (current) output.push(current);
+            current = { prompt: message.text, replyParts: [] };
+          } else if (message.role === "assistant" && current) {
+            if (message.text && !current.replyParts.includes(message.text)) {
+              current.replyParts.push(message.text);
+            }
+          }
+        }
+        if (current) output.push(current);
+
+        return output.map(item => ({
+          prompt: clean(item.prompt),
+          reply: clean(item.replyParts.join("\n\n"))
+        })).filter(item => item.prompt);
+      }
+    });
+
+    const extracted = results && results[0] ? results[0].result : [];
+    pairs = (Array.isArray(extracted) ? extracted : []).map((item, index) => ({
+      prompt: String(item.prompt || "").trim(),
+      reply: String(item.reply || "").trim(),
+      id: String(index),
+      index: index + 1
+    })).filter(item => item.prompt);
+
+    $("totalCount").textContent = String(pairs.length);
+    render();
+
+    if (pairs.length) {
+      const previous = pairs.find(item => item.id === selectedId);
+      const latest = pairs[pairs.length - 1];
+      select(previous ? previous.id : latest.id);
+      setStatus(
+        "Found " + pairs.length + " distinct prompt message(s). " +
+        pairs.filter(item => item.reply).length + " have a detected ChatGPT reply."
+      );
+    } else {
+      selectedId = null;
+      $("selected").hidden = true;
+      setStatus("No prompts detected. Make sure the conversation is open and its messages are loaded, then refresh.");
+    }
+  } catch (error) {
+    setStatus(error && error.message ? error.message : "Could not read this conversation.");
+  } finally {
+    $("load").disabled = false;
+    $("refresh").disabled = false;
+  }
+}
+
+function render() {
+  const query = $("search").value.toLowerCase().trim();
+  const shown = pairs.filter(item => item.prompt.toLowerCase().includes(query));
+  $("count").textContent = String(shown.length);
+  $("clearSearch").hidden = !query;
+  $("messages").replaceChildren();
+
+  if (!shown.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = pairs.length ? "No matching prompts." : "Load a conversation to see prompts.";
+    $("messages").append(empty);
+    return;
+  }
+
+  shown.forEach(item => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "message-item" + (item.id === selectedId ? " active" : "");
+
+    const top = document.createElement("div");
+    top.className = "message-top";
+
+    const number = document.createElement("span");
+    number.className = "message-number";
+    number.textContent = "PROMPT " + item.index;
+
+    const badge = document.createElement("span");
+    badge.className = "reply-badge " + (item.reply ? "ready" : "pending");
+    badge.textContent = item.reply ? "Reply ready" : "Reply not detected";
+
+    top.append(number, badge);
+
+    const prompt = document.createElement("strong");
+    prompt.textContent = item.prompt.replace(/\s+/g, " ").slice(0, 160);
+    button.append(top, prompt);
+    button.addEventListener("click", () => select(item.id));
+    $("messages").append(button);
+  });
+}
+
+function select(id) {
+  selectedId = id;
+  const item = pairs.find(entry => entry.id === id);
+  if (!item) return;
+
+  $("selected").hidden = false;
+  $("selectedTitle").textContent = "Prompt " + item.index;
+  $("promptText").textContent = item.prompt;
+  $("replyText").textContent = item.reply || "No assistant reply was found after this prompt.";
+  $("speakSelected").disabled = !item.reply || !("speechSynthesis" in window);
+  $("speakLatest").disabled = !pairs.length || !pairs[pairs.length - 1].reply || !("speechSynthesis" in window);
+  render();
+}
+
+function voiceList() {
+  if (!("speechSynthesis" in window)) return;
+  voices = window.speechSynthesis.getVoices();
+  const selectVoice = $("voice");
+  const oldValue = selectVoice.value;
+  selectVoice.replaceChildren(
+    new Option("System default", "auto"),
+    new Option("Female-sounding voice", "female"),
+    new Option("Male-sounding voice", "male")
+  );
+  voices.forEach((voice, index) => {
+    selectVoice.add(new Option(voice.name + " (" + voice.lang + ")", "v" + index));
+  });
+  if (Array.from(selectVoice.options).some(option => option.value === oldValue)) {
+    selectVoice.value = oldValue;
+  }
+}
+
+function splitForSpeech(value, limit) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return [];
+  const sentences = text.match(/[^.!?।]+[.!?।]?/g) || [text];
+  const chunks = [];
+  let current = "";
+
+  const addLongSentence = sentence => {
+    const words = sentence.split(/\s+/);
+    let part = "";
+    words.forEach(word => {
+      if (part && (part + " " + word).length > limit) {
+        chunks.push(part);
+        part = word;
+      } else {
+        part = part ? part + " " + word : word;
+      }
+    });
+    if (part) chunks.push(part);
+  };
+
+  sentences.forEach(sentence => {
+    const part = sentence.trim();
+    if (!part) return;
+    if (part.length > limit) {
+      if (current) {
+        chunks.push(current);
+        current = "";
+      }
+      addLongSentence(part);
+    } else if (current && (current + " " + part).length > limit) {
+      chunks.push(current);
+      current = part;
+    } else {
+      current = current ? current + " " + part : part;
+    }
+  });
+
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function stopSpeaking(updateStatus) {
+  speechRun += 1;
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  if (updateStatus !== false) setStatus("Reading stopped.");
+}
+
+function speak(item) {
+  if (!item || !item.reply) {
+    setStatus("This prompt does not have a detected ChatGPT reply. Refresh after the reply has finished generating.");
+    return;
+  }
+  if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+    setStatus("Text-to-speech is not available in this browser.");
+    return;
+  }
+
+  stopSpeaking(false);
+  const run = speechRun;
+  const chunks = splitForSpeech(item.reply, 220);
+  const rate = Number($("rate").value) || 0.8;
+  const choice = $("voice").value;
+  let voice = null;
+
+  if (choice.startsWith("v")) {
+    voice = voices[Number(choice.slice(1))] || null;
+  } else if (choice !== "auto") {
+    const pattern = choice === "female"
+      ? /female|zira|samantha|victoria|karen|aria|jenny|susan|hazel|ava/i
+      : /male|david|mark|guy|george|james|daniel/i;
+    voice = voices.find(candidate => pattern.test(candidate.name)) || null;
+  }
+
+  setStatus("Reading reply for prompt " + item.index + "…");
+
+  const readNext = () => {
+    if (run !== speechRun) return;
+    if (!chunks.length) {
+      setStatus("Finished reading prompt " + item.index + ".");
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(chunks.shift());
+    utterance.rate = rate;
+    if (voice) utterance.voice = voice;
+    if (voice && voice.lang) utterance.lang = voice.lang;
+    utterance.onend = readNext;
+    utterance.onerror = event => {
+      if (run === speechRun) {
+        setStatus("Speech playback error: " + (event.error || "unknown error") + ".");
+      }
+    };
+    window.speechSynthesis.speak(utterance);
+  };
+
+  window.speechSynthesis.resume();
+  readNext();
+}
+
+async function loadSettings() {
+  const settings = await chrome.storage.local.get(["apiKey", "model", "voiceRate", "voiceChoice"]);
+  $("apiKey").value = settings.apiKey || "";
+  $("model").value = settings.model || "gpt-4.1-mini";
+  if (settings.voiceRate) {
+    $("rate").value = settings.voiceRate;
+    $("rateValue").textContent = Number(settings.voiceRate).toFixed(1) + "×";
+  }
+  if (settings.voiceChoice) $("voice").value = settings.voiceChoice;
+}
+
+$("load").addEventListener("click", loadConversation);
+$("refresh").addEventListener("click", loadConversation);
+$("search").addEventListener("input", render);
+$("clearSearch").addEventListener("click", () => {
+  $("search").value = "";
+  render();
+});
+$("settings").addEventListener("click", () => chrome.runtime.openOptionsPage());
+$("speakSelected").addEventListener("click", () => speak(pairs.find(item => item.id === selectedId)));
+$("speakLatest").addEventListener("click", async () => {
+  await loadConversation();
+  speak(pairs[pairs.length - 1]);
+});
+$("stop").addEventListener("click", () => stopSpeaking(true));
+$("copy").addEventListener("click", async () => {
+  const item = pairs.find(entry => entry.id === selectedId);
+  if (item && item.reply) {
+    await navigator.clipboard.writeText(item.reply);
+    $("copy").textContent = "Copied";
+    setTimeout(() => { $("copy").textContent = "Copy reply"; }, 1000);
+  }
+});
+$("rate").addEventListener("input", () => {
+  $("rateValue").textContent = Number($("rate").value).toFixed(1) + "×";
+  chrome.storage.local.set({ voiceRate: Number($("rate").value) });
+});
+$("voice").addEventListener("change", () => {
+  chrome.storage.local.set({ voiceChoice: $("voice").value });
+});
+$("saveKey").addEventListener("click", async () => {
+  const key = $("apiKey").value.trim();
+  if (!key) {
+    $("apiStatus").textContent = "Paste an API key first.";
+    return;
+  }
+  await chrome.storage.local.set({
+    apiKey: key,
+    model: $("model").value.trim() || "gpt-4.1-mini"
+  });
+  $("apiStatus").textContent = "Key saved in extension storage.";
+});
+$("testKey").addEventListener("click", async () => {
+  const key = $("apiKey").value.trim();
+  if (key) {
+    await chrome.storage.local.set({
+      apiKey: key,
+      model: $("model").value.trim() || "gpt-4.1-mini"
+    });
+  }
+  $("apiStatus").textContent = "Testing API…";
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "TEST_OPENAI" });
+    $("apiStatus").textContent = result && result.ok
+      ? "API connection successful (" + result.model + ")."
+      : (result && result.error) || "API test failed.";
+  } catch (error) {
+    $("apiStatus").textContent = "Test failed: " + error.message;
+  }
+});
+
+if ("speechSynthesis" in window) {
+  window.speechSynthesis.onvoiceschanged = voiceList;
+  voiceList();
+} else {
+  $("speakSelected").disabled = true;
+  $("speakLatest").disabled = true;
+  setStatus("This browser does not provide speech synthesis.");
+}
+loadSettings();
+loadConversation();
