@@ -1,48 +1,25 @@
 # Voice Speakers — Aliens
 
-Chrome / Edge Manifest V3 extension for accurately extracting and speaking selected team-chat messages.
+Chrome Manifest V3 extension that reads ChatGPT replies aloud.
 
-## What it does
+## Current workflow
+1. Open a ChatGPT conversation at chatgpt.com or chat.openai.com.
+2. Click the Voice Speakers toolbar icon. The side panel opens and loads the active conversation.
+3. The panel lists your prompts. The latest prompt is selected automatically.
+4. Select any prompt or search your prompt text; its associated ChatGPT reply appears.
+5. Press **Read reply aloud**. Adjust speech rate and choose a browser-provided voice (default, female-sounding, or male-sounding).
 
-- Accepts text the user explicitly copies/pastes from Microsoft Teams or another chat.
-- Preserves message authors and message boundaries.
-- Uses an optional OpenAI-compatible Chat Completions API for deeper attribution and faithful transcription.
-- Falls back to local extraction when no API key is configured.
-- Redacts common password, OTP, 2FA, access-token, AWS-key and API-key patterns before remote analysis.
-- Speaks the final text using the browser's built-in SpeechSynthesis API.
-- Provides popup, side panel and settings pages.
+Use **Refresh** after new messages arrive. The extension reads the currently open conversation's rendered page; it does not fetch your account-wide ChatGPT history or hidden conversations.
 
 ## Install locally
+1. Download or clone this repository.
+2. Open chrome://extensions and enable Developer mode.
+3. Choose **Load unpacked** and select the `Voice-Speakers` folder.
+4. Open ChatGPT and click the extension icon.
 
-1. Open `chrome://extensions` (or `edge://extensions`).
-2. Enable **Developer mode**.
-3. Select **Load unpacked** and choose this `Voice-Speakers` directory.
-4. Open the extension popup, paste copied chat text, and select **Analyze messages**.
-
-## AI configuration
-
-Open extension Settings and enter an API key you control. The extension uses the OpenAI Chat Completions endpoint with the configured model (default: `gpt-4.1-mini`). API usage may incur charges. The key is kept in `chrome.storage.local`, which is not encrypted by this project. Do not use a shared/team-wide key or paste secrets into chat input.
-
-## Important limitations
-
-- The extension does **not** silently read private Teams messages, access Teams databases, bypass authentication, or scrape hidden chat content. The user must explicitly copy/paste text.
-- Local parsing is heuristic. For screenshots, quoted replies, nested threads, complex layouts, and ambiguous authors, AI analysis or manual verification is required.
-- Browser speech depends on installed system voices and browser support. Speech synthesis is not a guaranteed offline service on every platform.
-- No automatic recording, transcription of microphone audio, or background surveillance is included.
-
-## Security
-
-Treat pasted chat content as confidential. Review the text before submitting it to any AI provider. Keep redaction enabled. Redaction uses patterns and cannot guarantee detection of every secret format. Rotate any credentials exposed in chat screenshots or logs.
-
-## Development structure
-
-- `manifest.json` — extension definition
-- `popup.*` — toolbar popup
-- `sidepanel.html` / `ui.js` — side panel UI
-- `service.js` — analysis orchestration and API call
-- `analyzer.js` — local parser, redaction and system prompt
-- `options.*` — API and speech settings
-
-## Current status
-
-Initial MVP scaffold. Load and smoke-test in Chrome/Edge before production use. The browser extension does not claim verified sender/reply threading for arbitrary Teams DOM or screenshots; it only reports relationships that the AI can ground in supplied text.
+## Notes
+- Extraction depends on ChatGPT's page structure and may need updates if its UI changes.
+- Voice names and gender availability depend on the browser and operating system.
+- The extension reads visible/rendered conversation messages only.
+- No API key is needed for conversation loading or speech playback.
+- Existing optional AI analysis settings remain available in the extension settings page.
