@@ -1,61 +1,9 @@
-const $=id=>document.getElementById(id);
-let pairs=[],selectedId=null,voices=[];
-const getActiveTab=async()=>{const [tab]=await chrome.tabs.query({active:true,currentWindow:true});return tab;};
-async function loadConversation(){
- $("status").textContent="Reading the active ChatGPT conversation…";
- try{
-  const tab=await getActiveTab();
-  if(!tab?.id||!/^https:\/\/(chatgpt\.com|chat\.openai\.com)\//.test(tab.url||""))throw new Error("Open a ChatGPT conversation in the active tab first.");
-  const [{result}]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:()=>{
-   const nodes=[...document.querySelectorAll('[data-message-author-role]')];
-   const out=[];let current=null;
-   const textOf=n=>(n.querySelector('.markdown')||n.querySelector('[data-message-content]')||n).innerText?.trim()||"";
-   for(const n of nodes){
-    const role=n.getAttribute("data-message-author-role");
-    const text=textOf(n);if(!text)continue;
-    if(role==="user"){current={id:out.length+"-"+text.slice(0,24),prompt:text,reply:""};out.push(current);}
-    else if(role==="assistant"&&current){current.reply=text;}
-   }
-   return {title:document.title,messages:out};
-  }});
-  pairs=(result?.messages||[]).filter(x=>x.prompt);
-  renderList();
-  if(pairs.length){selectMessage(pairs[pairs.length-1].id);$("status").textContent="Loaded "+pairs.length+" of your messages. Latest prompt selected.";}
-  else $("status").textContent="No user messages found. Try refreshing the ChatGPT page.";
- }catch(e){$("status").textContent=e.message||"Could not read this conversation.";}
-}
-function renderList(){
- const q=$("search").value.trim().toLowerCase();
- const visible=pairs.filter(p=>p.prompt.toLowerCase().includes(q));
- $("count").textContent=visible.length+" / "+pairs.length;
- $("messages").replaceChildren();
- visible.forEach((p,i)=>{
-  const b=document.createElement("button");b.className="message-item"+(p.id===selectedId?" active":"");b.type="button";
-  const title=document.createElement("strong");title.textContent=(pairs.indexOf(p)+1)+". "+p.prompt.replace(/\s+/g," ").slice(0,115);
-  const meta=document.createElement("small");meta.textContent=p.reply?"Reply available":"Reply not yet available";
-  b.append(title,meta);b.addEventListener("click",()=>selectMessage(p.id));$("messages").append(b);
- });
-}
-function selectMessage(id){
- selectedId=id;const p=pairs.find(x=>x.id===id);if(!p)return;
- $("selected").hidden=false;$("selectedTitle").textContent="Reply to message "+(pairs.indexOf(p)+1);
- $("promptText").textContent=p.prompt;$("replyText").textContent=p.reply||"ChatGPT has not replied to this message yet.";
- $("speak").disabled=!p.reply;renderList();
-}
-$("load").addEventListener("click",loadConversation);$("refresh").addEventListener("click",loadConversation);
-$("search").addEventListener("input",renderList);
-$("settings").addEventListener("click",()=>chrome.runtime.openOptionsPage());
-$("copy").addEventListener("click",async()=>{const p=pairs.find(x=>x.id===selectedId);if(p)await navigator.clipboard.writeText(p.reply);});
-$("stop").addEventListener("click",()=>speechSynthesis.cancel());
-$("rate").addEventListener("input",()=>{$("rateValue").textContent=Number($("rate").value).toFixed(1)+"×";});
-function loadVoices(){voices=speechSynthesis.getVoices();const select=$("voice");const previous=select.value;select.replaceChildren(new Option("Default voice","any"),new Option("Female voice","female"),new Option("Male voice","male"));voices.forEach((v,i)=>{const o=new Option(v.name+" ("+v.lang+")",String(i));select.append(o);});if([...select.options].some(o=>o.value===previous))select.value=previous;}
-speechSynthesis.addEventListener("voiceschanged",loadVoices);loadVoices();
-$("speak").addEventListener("click",()=>{
- const p=pairs.find(x=>x.id===selectedId);if(!p?.reply)return;speechSynthesis.cancel();
- const u=new SpeechSynthesisUtterance(p.reply);u.rate=Number($("rate").value);
- const choice=$("voice").value;
- if(choice==="female"||choice==="male"){const re=choice==="female"?/female|woman|zira|samantha| victoria|karen|aria|jenny|susan|hazel/i:/male|man|david|mark|guy| george|james|daniel/i;u.voice=voices.find(v=>re.test(v.name))||null;}
- else if(choice!=="any")u.voice=voices[Number(choice)]||null;
- speechSynthesis.speak(u);
-});
-loadConversation();
+const $=id=>document.getElementById(id);let pairs=[],selectedId=null,voices=[];
+const activeTab=async()=>{const [t]=await chrome.tabs.query({active:true,lastFocusedWindow:true});return t;};
+async function loadConversation(){ $("status").textContent="Reading active ChatGPT conversation…";$("load").disabled=true;try{const tab=await activeTab();if(!tab?.id||!/^https:\/\/(chatgpt\.com|chat\.openai\.com)\//.test(tab.url||""))throw Error("Open a ChatGPT conversation in the active tab first.");const [{result}]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:()=>{const nodes=[...document.querySelectorAll('[data-message-author-role]')],out=[];let p=null;const text=n=>(n.querySelector(".markdown")||n.querySelector("[data-message-content]")||n).innerText?.trim()||"";for(const n of nodes){const role=n.getAttribute("data-message-author-role"),t=text(n);if(!t)continue;if(role==="user"){if(p)out.push(p);p={prompt:t,reply:""};}else if(role==="assistant"&&p)p.reply=t;}if(p)out.push(p);return out;}});pairs=(result||[]).map((p,i)=>({...p,id:String(i),index:i+1}));$("totalCount").textContent=pairs.length;render();if(pairs.length){select(pairs[pairs.length-1].id);$("status").textContent="Loaded "+pairs.length+" prompts. Latest selected.";}else{$("selected").hidden=true;$("status").textContent="No prompts detected. Refresh ChatGPT and retry.";}}catch(e){$("status").textContent=e.message||"Unable to load conversation.";}finally{$("load").disabled=false;}}
+function render(){const q=$("search").value.toLowerCase().trim(),shown=pairs.filter(p=>p.prompt.toLowerCase().includes(q));$("count").textContent=shown.length;$("clearSearch").hidden=!q;$("messages").replaceChildren();if(!shown.length){const d=document.createElement("div");d.className="empty";d.textContent=pairs.length?"No matching prompts.":"Load a conversation to view prompts."; $("messages").append(d);return;}for(const p of shown){const b=document.createElement("button");b.type="button";b.className="message-item"+(p.id===selectedId?" active":"");const top=document.createElement("div");top.className="message-top";const num=document.createElement("span");num.className="message-number";num.textContent="PROMPT "+p.index;const badge=document.createElement("span");badge.className="reply-badge "+(p.reply?"ready":"pending");badge.textContent=p.reply?"Reply ready":"Reply pending";top.append(num,badge);const t=document.createElement("strong");t.textContent=p.prompt.replace(/\s+/g," ").slice(0,160);b.append(top,t);b.onclick=()=>select(p.id);$("messages").append(b);}}
+function select(id){selectedId=id;const p=pairs.find(x=>x.id===id);if(!p)return;$("selected").hidden=false;$("selectedTitle").textContent="Prompt "+p.index;$("promptText").textContent=p.prompt;$("replyText").textContent=p.reply||"No assistant reply detected for this prompt."; $("speakSelected").disabled=!p.reply;$("speakLatest").disabled=!pairs.length||!pairs[pairs.length-1].reply;render();}
+function voiceList(){voices=speechSynthesis.getVoices();const s=$("voice"),old=s.value;s.replaceChildren(new Option("System default","auto"),new Option("Female-sounding voice","female"),new Option("Male-sounding voice","male"));voices.forEach((v,i)=>s.add(new Option(v.name+" ("+v.lang+")","v"+i)));if([...s.options].some(o=>o.value===old))s.value=old;}
+function speak(p){if(!p?.reply)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(p.reply);u.rate=Number($("rate").value);const c=$("voice").value;if(c.startsWith("v"))u.voice=voices[Number(c.slice(1))]||null;else if(c!=="auto"){const re=c==="female"?/female|zira|samantha|victoria|karen|aria|jenny|susan|hazel|ava/i:/male|david|mark|guy|george|james|daniel/i;u.voice=voices.find(v=>re.test(v.name))||null;}speechSynthesis.speak(u);}
+async function loadSettings(){const s=await chrome.storage.local.get(["apiKey","model","voiceRate","voiceChoice"]);$("apiKey").value=s.apiKey||"";$("model").value=s.model||"gpt-4.1-mini";if(s.voiceRate){$("rate").value=s.voiceRate;$("rateValue").textContent=Number(s.voiceRate).toFixed(1)+"×";}if(s.voiceChoice)$("voice").value=s.voiceChoice;}
+$("load").onclick=loadConversation;$("refresh").onclick=loadConversation;$("search").oninput=render;$("clearSearch").onclick=()=>{$("search").value="";render();};$("settings").onclick=()=>chrome.runtime.openOptionsPage();$("speakSelected").onclick=()=>speak(pairs.find(p=>p.id===selectedId));$("speakLatest").onclick=()=>speak(pairs[pairs.length-1]);$("stop").onclick=()=>speechSynthesis.cancel();$("copy").onclick=async()=>{const p=pairs.find(x=>x.id===selectedId);if(p?.reply){await navigator.clipboard.writeText(p.reply);$("copy").textContent="Copied";setTimeout(()=>$("copy").textContent="Copy reply",1000);}};$("rate").oninput=()=>{$("rateValue").textContent=Number($("rate").value).toFixed(1)+"×";chrome.storage.local.set({voiceRate:Number($("rate").value)});};$("voice").onchange=()=>chrome.storage.local.set({voiceChoice:$("voice").value});$("saveKey").onclick=async()=>{const key=$("apiKey").value.trim();if(!key){$("apiStatus").textContent="Paste an API key first.";return;}await chrome.storage.local.set({apiKey:key,model:$("model").value.trim()||"gpt-4.1-mini"});$("apiStatus").textContent="Key saved in extension storage.";};$("testKey").onclick=async()=>{const key=$("apiKey").value.trim();if(key)await chrome.storage.local.set({apiKey:key,model:$("model").value.trim()||"gpt-4.1-mini"});$("apiStatus").textContent="Testing API…";try{const r=await chrome.runtime.sendMessage({type:"TEST_OPENAI"});$("apiStatus").textContent=r.ok?"API connection successful ("+r.model+").":r.error;}catch(e){$("apiStatus").textContent="Test failed: "+e.message;}};speechSynthesis.onvoiceschanged=voiceList;voiceList();loadSettings();loadConversation();
