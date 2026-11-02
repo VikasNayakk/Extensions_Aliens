@@ -1,6 +1,30 @@
 const $=id=>document.getElementById(id);let pairs=[],selectedId=null,voices=[];
 const activeTab=async()=>{const [t]=await chrome.tabs.query({active:true,lastFocusedWindow:true});return t;};
-async function loadConversation(){ $("status").textContent="Reading active ChatGPT conversation…";$("load").disabled=true;try{const tab=await activeTab();if(!tab?.id||!/^https:\/\/(chatgpt\.com|chat\.openai\.com)\//.test(tab.url||""))throw Error("Open a ChatGPT conversation in the active tab first.");const [{result}]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:()=>{const nodes=[...document.querySelectorAll('[data-message-author-role]')],out=[];let p=null;const text=n=>(n.querySelector(".markdown")||n.querySelector("[data-message-content]")||n).innerText?.trim()||"";for(const n of nodes){const role=n.getAttribute("data-message-author-role"),t=text(n);if(!t)continue;if(role==="user"){if(p)out.push(p);p={prompt:t,reply:""};}else if(role==="assistant"&&p)p.reply=t;}if(p)out.push(p);return out;}});pairs=(result||[]).map((p,i)=>({...p,id:String(i),index:i+1}));$("totalCount").textContent=pairs.length;render();if(pairs.length){select(pairs[pairs.length-1].id);$("status").textContent="Loaded "+pairs.length+" prompts. Latest selected.";}else{$("selected").hidden=true;$("status").textContent="No prompts detected. Refresh ChatGPT and retry.";}}catch(e){$("status").textContent=e.message||"Unable to load conversation.";}finally{$("load").disabled=false;}}
+async function loadConversation(){ $("status").textContent="Reading active ChatGPT conversation…";$("load").disabled=true;try{const tab=await activeTab();if(!tab?.id||!/^https:\/\/(chatgpt\.com|chat\.openai\.com)\//.test(tab.url||""))throw Error("Open a ChatGPT conversation in the active tab first.");const [{result}]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:()=>{
+ const norm=t=>(t||"").replace(/\\u200b/g,"").trim();
+ const text=n=>norm((n.querySelector(".markdown")||n.querySelector("[data-message-content]")||n).innerText);
+ let nodes=[...document.querySelectorAll('[data-message-author-role]')].map(n=>({role:n.getAttribute("data-message-author-role"),text:text(n)})).filter(x=>x.text);
+ if(!nodes.length){
+  const turns=[...document.querySelectorAll('article[data-testid^="conversation-turn-"], [data-testid^="conversation-turn-"]')];
+  nodes=turns.map(turn=>{
+   const user=turn.querySelector('[data-testid^="user-message"], [data-message-author-role="user"]');
+   const assistant=turn.querySelector('[data-message-author-role="assistant"]');
+   if(user)return {role:"user",text:text(user)};
+   if(assistant)return {role:"assistant",text:text(assistant)};
+   const label=(turn.innerText||"").trim();
+   return {role:/^(You|You said|You:)/i.test(label)?"user":"",text:norm(label)};
+  }).filter(x=>x.role&&x.text);
+ }
+ // Visual fallback: ChatGPT user prompt containers commonly have a user-turn wrapper;
+ // identify only clear user-turn structures, not arbitrary blue-colored content.
+ if(!nodes.length){
+  nodes=[...document.querySelectorAll('[data-testid*="user-message"], .text-message')].map(n=>({role:"user",text:text(n)})).filter(x=>x.text);
+ }
+ const out=[];let p=null;
+ for(const item of nodes){if(item.role==="user"){if(p)out.push(p);p={prompt:item.text,reply:""};}else if(item.role==="assistant"&&p)p.reply=item.text;}
+ if(p)out.push(p);
+ return {title:document.title,messages:out};
+}})pairs=(result||[]).map((p,i)=>({...p,id:String(i),index:i+1}));$("totalCount").textContent=pairs.length;render();if(pairs.length){select(pairs[pairs.length-1].id);$("status").textContent="Loaded "+pairs.length+" prompts. Latest selected.";}else{$("selected").hidden=true;$("status").textContent="No prompts detected. Refresh ChatGPT and retry.";}}catch(e){$("status").textContent=e.message||"Unable to load conversation.";}finally{$("load").disabled=false;}}
 function render(){const q=$("search").value.toLowerCase().trim(),shown=pairs.filter(p=>p.prompt.toLowerCase().includes(q));$("count").textContent=shown.length;$("clearSearch").hidden=!q;$("messages").replaceChildren();if(!shown.length){const d=document.createElement("div");d.className="empty";d.textContent=pairs.length?"No matching prompts.":"Load a conversation to view prompts."; $("messages").append(d);return;}for(const p of shown){const b=document.createElement("button");b.type="button";b.className="message-item"+(p.id===selectedId?" active":"");const top=document.createElement("div");top.className="message-top";const num=document.createElement("span");num.className="message-number";num.textContent="PROMPT "+p.index;const badge=document.createElement("span");badge.className="reply-badge "+(p.reply?"ready":"pending");badge.textContent=p.reply?"Reply ready":"Reply pending";top.append(num,badge);const t=document.createElement("strong");t.textContent=p.prompt.replace(/\s+/g," ").slice(0,160);b.append(top,t);b.onclick=()=>select(p.id);$("messages").append(b);}}
 function select(id){selectedId=id;const p=pairs.find(x=>x.id===id);if(!p)return;$("selected").hidden=false;$("selectedTitle").textContent="Prompt "+p.index;$("promptText").textContent=p.prompt;$("replyText").textContent=p.reply||"No assistant reply detected for this prompt."; $("speakSelected").disabled=!p.reply;$("speakLatest").disabled=!pairs.length||!pairs[pairs.length-1].reply;render();}
 function voiceList(){voices=speechSynthesis.getVoices();const s=$("voice"),old=s.value;s.replaceChildren(new Option("System default","auto"),new Option("Female-sounding voice","female"),new Option("Male-sounding voice","male"));voices.forEach((v,i)=>s.add(new Option(v.name+" ("+v.lang+")","v"+i)));if([...s.options].some(o=>o.value===old))s.value=old;}
