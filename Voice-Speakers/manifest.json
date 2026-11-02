@@ -1,26 +1,21 @@
 {
   "manifest_version": 3,
   "name": "Voice Speakers — Aliens",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Turns selected team-chat messages into accurate, speaker-attributed spoken summaries.",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "sidePanel", "activeTab", "scripting", "clipboardRead"],
+  "permissions": ["storage", "sidePanel", "activeTab", "clipboardRead"],
   "host_permissions": ["https://api.openai.com/*"],
   "action": {
     "default_title": "Voice Speakers",
     "default_popup": "popup.html"
   },
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "service.js",
     "type": "module"
   },
   "side_panel": {
     "default_path": "sidepanel.html"
   },
-  "options_page": "options.html",
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  }
+  "options_page": "options.html"
 }
