@@ -1,13 +1,13 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Voice Speakers</title><link rel="stylesheet" href="styles.css"></head>
-<body><header class="top"><div class="brand-mark">VS</div><div><strong>Voice Speakers</strong><small>CHATGPT CONVERSATION READER</small></div><button id="settings" class="icon-btn" title="Voice settings">⚙</button></header>
+<body class="app">
+<header class="topbar"><div class="brand"><div class="brand-mark">VS</div><div><strong>Voice Speakers</strong><small>CHATGPT READER</small></div></div><button id="settings" class="icon-button" aria-label="Settings" title="Settings">⚙</button></header>
 <main>
-<div class="row"><button id="load" class="primary">Load current ChatGPT chat</button><button id="refresh" class="secondary">Refresh</button></div>
-<p id="status" class="status" aria-live="polite">Open a ChatGPT conversation, then load it.</p>
-<label for="search">Search your messages</label><input id="search" type="text" placeholder="Search prompts…">
-<div class="list-head"><strong>Your messages</strong><span id="count" class="muted">0</span></div><div id="messages" class="message-list"></div>
-<section id="selected" hidden><div class="result-head"><strong id="selectedTitle">Selected reply</strong><button id="copy" class="text-btn">Copy reply</button></div><div class="prompt-box"><label>Your message</label><div id="promptText"></div></div><div class="reply-box"><label>ChatGPT reply</label><div id="replyText"></div></div>
-<div class="row"><button id="speak" class="primary">Read reply aloud</button><button id="stop" class="secondary">Stop</button></div>
-<label for="rate">Speech speed <output id="rateValue">0.8×</output></label><input id="rate" type="range" min="0.5" max="1.5" step="0.1" value="0.8">
-<label for="voice">Voice</label><select id="voice"><option value="any">Default voice</option><option value="female">Female voice</option><option value="male">Male voice</option></select><p class="muted">Available voices depend on your browser and operating system.</p></section>
+<section class="load-card"><div><h1>Conversation</h1><p id="status" class="status" aria-live="polite">Connect to your open ChatGPT conversation.</p></div><div class="row"><button id="load" class="primary">Load conversation</button><button id="refresh" class="secondary" title="Refresh messages">↻</button></div></section>
+<section class="stats"><div><span id="promptCount">0</span><small>Your prompts</small></div><div><span id="replyCount">0</span><small>Replies found</small></div></section>
+<section class="search-section"><label for="search">Find a prompt</label><div class="search-wrap"><span>⌕</span><input id="search" type="search" placeholder="Search your messages…"><button id="clearSearch" aria-label="Clear search" hidden>×</button></div></section>
+<section class="list-section"><div class="section-heading"><strong>Your prompts</strong><span id="count" class="muted">0 shown</span></div><div id="messages" class="message-list"><div class="empty">Load a conversation to see your prompts here.</div></div></section>
+<section id="selected" class="selected-card" hidden><div class="section-heading"><div><small class="eyebrow">SELECTED PROMPT</small><strong id="selectedTitle">Prompt</strong></div><button id="copy" class="text-button">Copy reply</button></div><div class="prompt-box"><label>Your message</label><div id="promptText"></div></div><div class="reply-box"><label>ChatGPT reply</label><div id="replyText"></div></div>
+<div class="play-row"><button id="speakLatest" class="primary">▶ Read latest reply</button><button id="speakSelected" class="secondary">▶ Read selected</button><button id="stop" class="icon-button stop" title="Stop reading">■</button></div>
+<div class="speech-settings"><div class="setting-line"><label for="rate">Speech speed</label><output id="rateValue">0.75×</output></div><input id="rate" type="range" min="0.5" max="1.5" step="0.05" value="0.75"><div class="setting-line"><label for="voice">Voice</label></div><select id="voice"><option value="auto">Default voice</option><option value="female">Female voice</option><option value="male">Male voice</option></select></div></section>
 </main><script src="ui.js"></script></body></html>
