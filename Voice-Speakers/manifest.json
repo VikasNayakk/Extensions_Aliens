@@ -1,13 +1,29 @@
 {
   "manifest_version": 3,
   "name": "Voice Speakers — Aliens",
-  "version": "1.2.2",
-  "description": "Lists your ChatGPT prompts and reads the response to the latest or selected prompt.",
+  "version": "1.2.3",
+  "description": "Detects distinct prompts in the open ChatGPT conversation and reads each matching reply aloud.",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "sidePanel", "activeTab", "scripting"],
-  "host_permissions": ["https://chatgpt.com/*", "https://chat.openai.com/*", "https://api.openai.com/*"],
-  "action": {"default_title":"Voice Speakers"},
-  "background": {"service_worker":"service.js","type":"module"},
-  "side_panel": {"default_path":"sidepanel.html"},
-  "options_page":"options.html"
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://api.openai.com/*"
+  ],
+  "action": {
+    "default_title": "Voice Speakers"
+  },
+  "background": {
+    "service_worker": "service.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "options_page": "options.html"
 }
