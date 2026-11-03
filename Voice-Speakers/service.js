@@ -120,6 +120,8 @@ async function waitForMonitorTab(tabId, timeoutMs=25000) {
     try { tab=await chrome.tabs.get(tabId); } catch (_) { return null; }
     if(tab?.discarded) {
       try { await chrome.tabs.reload(tabId); } catch (_) {}
+      await new Promise(resolve=>setTimeout(resolve,350));
+      continue;
     }
     if(tab && teamsUrl(tab.url)) {
       try { await chrome.tabs.update(tabId,{autoDiscardable:false}); } catch (_) {}
@@ -201,16 +203,33 @@ async function ensureGroupMonitorTabs() {
     if(!Number.isInteger(group.monitorTabId)) continue;
     try {
       const tab=await chrome.tabs.get(group.monitorTabId);
-      if(tab?.status==="complete" && teamsUrl(tab.url)) {
-        await chrome.scripting.executeScript({
-          target:{tabId:group.monitorTabId,frameIds:[0]},
-          files:["teams-content.js"]
-        });
+      if(tab?.status==="complete" && teamsUrl(tab.url) && !tab.discarded) {
+        await restoreMonitorTabToSelectedGroup(group,group.monitorTabId);
       }
     } catch (_) {}
   }
 
   return {total:groups.length,ready,created,missing,failed};
+}
+
+async function restoreMonitorTabToSelectedGroup(group, tabId) {
+  if(!group?.monitorUrl || !group?.chatId || !Number.isInteger(tabId)) return false;
+  try {
+    await chrome.scripting.executeScript({
+      target:{tabId,frameIds:[0]},
+      files:["teams-content.js"]
+    });
+    const info=await chrome.tabs.sendMessage(tabId,{type:"TEAMS_GET_CHAT_INFO_V16"},{frameId:0});
+    if(info?.ok && info.chatId && info.chatId!==group.chatId) {
+      await chrome.tabs.update(tabId,{
+        url:group.monitorUrl,
+        active:false,
+        autoDiscardable:false
+      });
+      return true;
+    }
+  } catch (_) {}
+  return false;
 }
 
 async function sendToMonitorTab(tabId, message) {
@@ -583,10 +602,8 @@ chrome.tabs.onUpdated.addListener(async(tabId,changeInfo,tab)=>{
   if(changeInfo.status==="complete") {
     try {
       await chrome.tabs.update(tabId,{autoDiscardable:false});
-      await chrome.scripting.executeScript({
-        target:{tabId,frameIds:[0]},
-        files:["teams-content.js"]
-      });
+      const group=groups.find(item=>item.monitorTabId===tabId);
+      if(group) await restoreMonitorTabToSelectedGroup(group,tabId);
     } catch (_) {}
     publishLiveState();
   }
