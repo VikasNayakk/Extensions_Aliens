@@ -12,7 +12,8 @@
     observer: null,
     waitingObserver: null,
     poller: null,
-    timer: null
+    timer: null,
+    suppressUntil: 0
   };
 
   const send = (type, payload = {}) => {
@@ -290,6 +291,10 @@
       }
 
       const batch = extract(info.node);
+      if (Date.now() < state.suppressUntil) {
+        state.seen = new Set(batch.messages.map(message => message.key));
+        return;
+      }
       const unseen = batch.messages.filter(message => !state.seen.has(message.key));
       // A large replacement usually means a chat was switched or history was loaded.
       // Re-baseline rather than speaking a whole previous conversation as new.
@@ -325,6 +330,32 @@
       text: "Live reader is ON in this Teams tab. Waiting for the chat message list if it is not loaded yet."
     });
   }
+
+  document.addEventListener("click", event => {
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    if (!target) return;
+    if (target.closest('[role="treeitem"], [data-tid="chat-list-item"], [data-tid="chat-pane-list"]')) {
+      state.suppressUntil = Date.now() + 2800;
+      if (state.timer) clearTimeout(state.timer);
+      state.timer = setTimeout(() => {
+        state.timer = null;
+        if (state.running) {
+          const info = findRoot();
+          if (info) {
+            const baseline = extract(info.node);
+            state.root = info.node;
+            state.rootSelector = info.selector;
+            state.chatKey = chatKey(info);
+            state.seen = new Set(baseline.messages.map(message => message.key));
+            send("TEAMS_LIVE_STATUS", {
+              running: true,
+              text: "Chat switched. Previous messages skipped: " + baseline.messages.length + "."
+            });
+          }
+        }
+      }, 2800);
+    }
+  }, true);
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local" || !changes.teamsLiveEnabled) return;
