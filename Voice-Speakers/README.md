@@ -14,9 +14,6 @@ Chrome Manifest V3 extension that reads ChatGPT replies aloud.
 
 Only messages in Teams chat panes that are open/rendered in the browser are monitored. Hidden chats and unopened account-wide chat history are not fetched. When a Teams chat is changed, its already-loaded messages are used as a baseline and skipped.
 
-### ChatGPT reply reader
-The existing ChatGPT conversation reader remains in `sidepanel.html`; it can be opened separately when needed.
-
 ## Install locally
 1. Download or clone this repository.
 2. Open chrome://extensions and enable Developer mode.
