@@ -121,6 +121,9 @@ async function waitForMonitorTab(tabId, timeoutMs=25000) {
     if(tab?.discarded) {
       try { await chrome.tabs.reload(tabId); } catch (_) {}
     }
+    if(tab && teamsUrl(tab.url)) {
+      try { await chrome.tabs.update(tabId,{autoDiscardable:false}); } catch (_) {}
+    }
     if(tab && teamsUrl(tab.url) && tab.status==="complete") return tab;
     await new Promise(resolve=>setTimeout(resolve,350));
   }
@@ -135,17 +138,44 @@ async function createOrGetMonitorTab(group) {
   if(Number.isInteger(group.monitorTabId)) {
     try {
       const existing=await chrome.tabs.get(group.monitorTabId);
-      if(existing && teamsUrl(existing.url)) return existing.id;
+      if(existing && teamsUrl(existing.url)) {
+        await chrome.tabs.update(existing.id,{autoDiscardable:false});
+        if(existing.discarded) await chrome.tabs.reload(existing.id);
+        return existing.id;
+      }
     } catch (_) {}
   }
 
   const created=await chrome.tabs.create({url:group.monitorUrl,active:false});
   group.monitorTabId=created.id;
+  await chrome.tabs.update(created.id,{autoDiscardable:false});
   return created.id;
 }
 
 async function ensureGroupMonitorTabs() {
   const groups=await getStoredGroups();
+
+  // Upgrade old saved groups automatically when their original Teams tab is still on that group.
+  for(const group of groups) {
+    if(group.chatId && group.monitorUrl) continue;
+    for(const oldTabId of group.tabIds||[]) {
+      try {
+        const oldTab=await chrome.tabs.get(oldTabId);
+        if(!teamsUrl(oldTab.url)) continue;
+        await chrome.scripting.executeScript({
+          target:{tabId:oldTabId,frameIds:[0]},
+          files:["teams-content.js"]
+        });
+        const info=await chrome.tabs.sendMessage(oldTabId,{type:"TEAMS_GET_CHAT_INFO_V16"},{frameId:0});
+        if(info?.ok && normalizeGroup(info.groupName)===normalizeGroup(group.name) && info.chatId && info.monitorUrl) {
+          group.chatId=info.chatId;
+          group.monitorUrl=info.monitorUrl;
+          group.name=info.groupName;
+          break;
+        }
+      } catch (_) {}
+    }
+  }
   const missing=[];
   const failed=[];
   let created=0;
@@ -199,12 +229,8 @@ async function sendToMonitorTab(tabId, message) {
 async function addCurrentGroup() {
   const tab=await activeTeamsTab();
   let info;
-  try {
-    info=await chrome.tabs.sendMessage(tab.id,{type:"TEAMS_GET_CHAT_INFO"},{frameId:0});
-  } catch (_) {
-    await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},files:["teams-content.js"]});
-    info=await chrome.tabs.sendMessage(tab.id,{type:"TEAMS_GET_CHAT_INFO"},{frameId:0});
-  }
+  await chrome.scripting.executeScript({target:{tabId:tab.id,frameIds:[0]},files:["teams-content.js"]});
+  info=await chrome.tabs.sendMessage(tab.id,{type:"TEAMS_GET_CHAT_INFO_V16"},{frameId:0});
   if(!info?.ok || !info.groupName || !info.groupKey || !info.chatId || !info.monitorUrl) {
     throw new Error(info?.error || "Could not identify this Teams group and its chat ID.");
   }
@@ -283,7 +309,7 @@ async function readLastFive(groupKey) {
   }
   const tabId=await createOrGetMonitorTab(group);
   await chrome.storage.local.set({[TEAMS_GROUPS_KEY]:groups});
-  const result=await sendToMonitorTab(tabId,{type:"TEAMS_READ_LAST_FIVE",groupKey});
+  const result=await sendToMonitorTab(tabId,{type:"TEAMS_READ_LAST_FIVE_V16",groupKey});
   if(!result?.ok) throw new Error(result?.error||"Could not read the last five messages from this group's monitor tab.");
   const messages=(result.messages||[]).slice(-5);
   if(!messages.length) {
@@ -487,7 +513,7 @@ async function onTeamsMessage(message,sender) {
     await setStatus("Ignored Teams message: sender or message text was empty.");
     return;
   }
-  const uniqueId=tabId+"|"+groupKey+"|"+messageId;
+  const uniqueId=groupKey+"|"+(messageId||senderName+"|"+text);
   if(messageId && recentMessageIds.has(uniqueId)) return;
   if(messageId) {
     recentMessageIds.add(uniqueId);
@@ -547,18 +573,23 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
 });
 
 chrome.tabs.onUpdated.addListener(async(tabId,changeInfo,tab)=>{
-  if(changeInfo.status!=="complete" || !teamsUrl(tab?.url)) return;
   const groups=await getStoredGroups();
   const isMonitor=groups.some(group=>group.monitorTabId===tabId);
-  if(isMonitor) {
+  if(!isMonitor || !teamsUrl(tab?.url)) return;
+  if(changeInfo.discarded===true || tab.discarded) {
+    try { await chrome.tabs.reload(tabId); } catch (_) {}
+    return;
+  }
+  if(changeInfo.status==="complete") {
     try {
+      await chrome.tabs.update(tabId,{autoDiscardable:false});
       await chrome.scripting.executeScript({
         target:{tabId,frameIds:[0]},
         files:["teams-content.js"]
       });
     } catch (_) {}
+    publishLiveState();
   }
-  publishLiveState();
 });
 chrome.tabs.onRemoved.addListener(async tabId=>{
   const groups=await getStoredGroups();
