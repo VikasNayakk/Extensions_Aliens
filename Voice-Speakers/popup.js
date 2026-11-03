@@ -2,6 +2,7 @@ const $ = id => document.getElementById(id);
 
 function paint(data) {
   const enabled=!!data.teamsLiveEnabled;
+  applyTheme(data.teamsPopupTheme || "light");
   $("statusPill").textContent=enabled?"ON":"OFF";
   $("statusPill").className="pill "+(enabled?"on":"off");
   $("power").className="switch "+(enabled?"on":"off");
@@ -20,6 +21,22 @@ function paint(data) {
 }
 
 async function refresh(){try{const state=await chrome.runtime.sendMessage({type:"GET_TEAMS_LIVE_STATUS"});paint(state||{});}catch(e){$("status").textContent="Could not read extension state: "+e.message;}}
+  
+function applyTheme(theme) {
+  const selected = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = selected;
+  const button = $("theme");
+  if (button) {
+    button.textContent = selected === "dark" ? "Light" : "Dark";
+    button.setAttribute("aria-label", selected === "dark" ? "Switch to light mode" : "Switch to dark mode");
+  }
+}
+
+$("theme").addEventListener("click", async () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(next);
+  await chrome.storage.local.set({teamsPopupTheme:next});
+});
 
 $("power").addEventListener("click",async()=>{
   const next=$("power").getAttribute("aria-pressed")!=="true";
@@ -31,5 +48,5 @@ $("power").addEventListener("click",async()=>{
 });
 $("settings").addEventListener("click",()=>chrome.runtime.openOptionsPage());
 chrome.runtime.onMessage.addListener(message=>{if(message?.type==="TEAMS_LIVE_STATE_UPDATED")paint(message.state||{});});
-chrome.storage.onChanged.addListener((changes,area)=>{if(area==="local" && Object.keys(changes).some(k=>["teamsLiveEnabled","teamsReadCount","teamsRecentEvents","teamsLastStatus"].includes(k)))refresh();});
+chrome.storage.onChanged.addListener((changes,area)=>{if(area==="local" && Object.keys(changes).some(k=>["teamsLiveEnabled","teamsReadCount","teamsRecentEvents","teamsLastStatus","teamsPopupTheme"].includes(k)))refresh();});
 refresh();
