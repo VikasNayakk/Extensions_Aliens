@@ -10,7 +10,7 @@ Current Teams live reader release: **1.6.0**.
 1. Open a Teams group in its own browser tab and click the Voice Speakers toolbar icon.
 2. Click **Add currently open Teams group**. The group name is detected from the Teams tab.
 3. When asked, choose **Yes, read last 5** or **No, only new**.
-4. Add other groups from their normal Teams chats. The extension creates a dedicated inactive/background Teams tab for each selected group, so you do not need to keep those chats open in your working tab.
+4. Add other groups by opening each chat in Teams and adding it once. After setup, their incoming in-app notification cards are matched even when another chat is open.
 5. Move groups up or down to set priority. The group at the top gets first place when multiple messages are waiting. A short one-second collection window lets messages arriving together be sorted before speech starts.
 6. Turn **Live message reading** ON. Existing messages are skipped unless you explicitly choose to read the last five.
 7. A live message is announced as: group name, then a five-second pause, then sender name and message. Messages are queued one by one by group priority.
