@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Voice Speakers — Aliens",
-  "version": "1.6.0",
-  "description": "Priority-based Microsoft Teams group reader using in-app notification cards.",
+  "version": "1.6.1",
+  "description": "Priority-based Microsoft Teams group reader with grouped, deduplicated speech and audio playback.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
