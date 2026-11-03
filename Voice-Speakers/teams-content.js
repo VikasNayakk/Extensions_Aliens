@@ -4,7 +4,7 @@
 
   const state=window[STATE_KEY]={
     running:false,enabled:false,root:null,rootSelector:"",chatKey:"",
-    seen:new Set(),toastSeen:new Map(),lastSeenKey:null,hasBaseline:false,observer:null,waitingObserver:null,
+    seen:new Set(),toastSeen:new Map(),toastPrimed:false,lastSeenKey:null,hasBaseline:false,observer:null,waitingObserver:null,
     toastObserver:null,toastPoller:null,poller:null,timer:null,suppressUntil:0
   };
 
@@ -266,22 +266,22 @@
   const toastBoilerplate=/^(microsoft teams|more options|send reaction|dismiss notification|reply|profile picture|close|notification)$/i;
   function toastCard(button){
     for(let node=button,depth=0;node&&node!==document.body&&depth<10;node=node.parentElement,depth++){
-      const lines=String(node.innerText||node.textContent||"").split(/\\r?\\n/).map(clean).filter(Boolean);
-      const senderIndex=lines.findIndex(line=>/^[^:]{1,90}:\\s*\\S/.test(line));
+      const lines=String(node.innerText||node.textContent||"").split(/\r?\n/).map(clean).filter(Boolean);
+      const senderIndex=lines.findIndex(line=>/^[^:]{1,90}:\s*\S/.test(line));
       if(senderIndex>0 && lines.length<=45){
-        const group=lines.slice(0,senderIndex).reverse().find(line=>!toastBoilerplate.test(line)&&!/^\\d{1,2}[:/]\\d/.test(line));
+        const group=lines.slice(0,senderIndex).reverse().find(line=>!toastBoilerplate.test(line)&&!/^\d{1,2}[:/]\d/.test(line));
         if(group) return node;
       }
     }
     return null;
   }
   function parseToast(card){
-    const lines=String(card.innerText||card.textContent||"").split(/\\r?\\n/).map(clean).filter(Boolean);
-    const senderIndex=lines.findIndex(line=>/^[^:]{1,90}:\\s*\\S/.test(line));
+    const lines=String(card.innerText||card.textContent||"").split(/\r?\n/).map(clean).filter(Boolean);
+    const senderIndex=lines.findIndex(line=>/^[^:]{1,90}:\s*\S/.test(line));
     if(senderIndex<=0) return null;
-    const groupName=lines.slice(0,senderIndex).reverse().find(line=>!toastBoilerplate.test(line)&&!/^\\d{1,2}[:/]\\d/.test(line));
+    const groupName=lines.slice(0,senderIndex).reverse().find(line=>!toastBoilerplate.test(line)&&!/^\d{1,2}[:/]\d/.test(line));
     if(!groupName) return null;
-    const pair=lines[senderIndex].match(/^([^:]{1,90}):\\s*(.*)$/);
+    const pair=lines[senderIndex].match(/^([^:]{1,90}):\s*(.*)$/);
     if(!pair) return null;
     let text=clean(pair[2]);
     if(!text && lines[senderIndex+1]) text=clean(lines[senderIndex+1]);
@@ -297,7 +297,11 @@
       if(!parsed?.groupName||!parsed.sender||!parsed.text) return;
       const key=[normalize(parsed.groupName),normalize(parsed.sender),normalize(parsed.text)].join("|");
       const now=Date.now(),last=state.toastSeen.get(key)||0;
-      if(now-last<90000) return;
+      if(!state.toastPrimed) {
+        state.toastSeen.set(key,now);
+        return;
+      }
+      if(now-last<6000) return;
       state.toastSeen.set(key,now);
       if(state.toastSeen.size>500){
         for(const [entry,time] of state.toastSeen) if(now-time>300000) state.toastSeen.delete(entry);
@@ -312,6 +316,7 @@
         messageId:"teams-toast:"+key
       });
     });
+    if(!state.toastPrimed) state.toastPrimed=true;
   }
 
   function start(){
