@@ -14,7 +14,7 @@ Chrome Manifest V3 extension that reads ChatGPT replies aloud.
 7. A live message is announced as: group name, then a five-second pause, then sender name and message. Messages are queued one by one by group priority.
 8. Turn OFF to stop monitoring and clear queued speech.
 
-The Teams web client only renders the chat currently open in each tab. Therefore each selected group needs its own Teams tab for simultaneous monitoring. Switching to non-Teams browser tabs does not stop monitoring. A group chat navigation in its tab is treated as a new baseline to avoid reading old history as new.
+The Teams web client only renders the chat currently open in each tab. Therefore each selected group needs its own Teams tab for simultaneous monitoring. Switching to non-Teams browser tabs does not stop monitoring. If the same selected group is opened in another Teams tab, its group name is matched to the selected-group list; tab identity is not used to block the message. A group chat navigation in its tab is treated as a new baseline to avoid reading old history as new.
 
 
 ## Install locally
