@@ -4,15 +4,18 @@ Chrome Manifest V3 extension that reads ChatGPT replies aloud.
 
 ## Current workflow
 
-### Microsoft Teams live reader
-1. Click the Voice Speakers toolbar icon. A compact popup opens; it does not open the side panel automatically.
-2. Switch **Live message reading** to **ON** once.
-3. The extension monitors all currently open Teams tabs at `teams.cloud.microsoft` and `teams.microsoft.com`, including tabs running in the background.
-4. Switching to another browser tab does not stop the monitor. New Teams tabs are monitored automatically while the setting remains ON.
-5. New incoming messages are spoken as **“Sender name ne kaha: message text.”**
-6. Switch to **OFF** to stop monitoring and stop queued speech.
+### Microsoft Teams group reader
+1. Open a Teams group in its own browser tab and click the Voice Speakers toolbar icon.
+2. Click **Add currently open Teams group**. The group name is detected from the Teams tab.
+3. When asked, choose **Yes, read last 5** or **No, only new**.
+4. Add other groups from their own Teams tabs. Keep one Teams tab open per selected group so each group's live message list stays rendered.
+5. Move groups up or down to set priority. The group at the top gets first place when multiple messages are waiting.
+6. Turn **Live message reading** ON. Existing messages are skipped unless you explicitly choose to read the last five.
+7. A live message is announced as: group name, then a five-second pause, then sender name and message. Messages are queued one by one by group priority.
+8. Turn OFF to stop monitoring and clear queued speech.
 
-Only messages in Teams chat panes that are open/rendered in the browser are monitored. Hidden chats and unopened account-wide chat history are not fetched. When a Teams chat is changed, its already-loaded messages are used as a baseline and skipped.
+The Teams web client only renders the chat currently open in each tab. Therefore each selected group needs its own Teams tab for simultaneous monitoring. Switching to non-Teams browser tabs does not stop monitoring. A group chat navigation in its tab is treated as a new baseline to avoid reading old history as new.
+
 
 ## Install locally
 1. Download or clone this repository.
