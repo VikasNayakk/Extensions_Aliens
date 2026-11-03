@@ -2,6 +2,8 @@
 
 Chrome Manifest V3 extension that reads ChatGPT replies aloud.
 
+Current Teams live reader release: **1.5.7**.
+
 ## Current workflow
 
 ### Microsoft Teams group reader
