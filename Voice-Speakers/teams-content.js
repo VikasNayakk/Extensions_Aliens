@@ -4,7 +4,7 @@
 
   const state=window[STATE_KEY]={
     running:false,enabled:false,root:null,rootSelector:"",chatKey:"",
-    seen:new Set(),observer:null,waitingObserver:null,poller:null,timer:null,suppressUntil:0
+    seen:new Set(),lastSeenKey:null,hasBaseline:false,observer:null,waitingObserver:null,poller:null,timer:null,suppressUntil:0
   };
 
   const send=(type,payload={})=>{
@@ -185,7 +185,7 @@
         const id=body.id||body.getAttribute("data-message-id")||item.getAttribute("data-message-id")||"";
         const key=id||[sender,stamp,raw].join("|");
         messages.push({
-          key,sender,text:redact(raw),timestamp:stamp,own:isOwn(item,body,sender,me),index
+          key,sender,text:redact(raw),timestamp:stamp,own:isOwn(item,body,sender,me),index:messages.length
         });
       });
     });
@@ -222,6 +222,8 @@
       state.chatKey=groupKey();
       const baseline=extract(info.node);
       state.seen=new Set(baseline.messages.map(message=>message.key));
+      state.lastSeenKey=baseline.messages.length?baseline.messages[baseline.messages.length-1].key:null;
+      state.hasBaseline=baseline.messages.length>0;
       state.observer?.disconnect();
       state.observer=new MutationObserver(schedule);
       state.observer.observe(info.node,{childList:true,subtree:true,characterData:true});
@@ -238,13 +240,34 @@
       const batch=extract(info.node);
       if(Date.now()<state.suppressUntil){
         state.seen=new Set(batch.messages.map(message=>message.key));
+        state.lastSeenKey=batch.messages.length?batch.messages[batch.messages.length-1].key:null;
+        state.hasBaseline=batch.messages.length>0;
         return;
       }
-      const unseen=batch.messages.filter(message=>!state.seen.has(message.key));
-      // Only messages inserted at the end of the open conversation count as new.
-      const newAtEnd=unseen.filter(message=>message.index>=Math.max(0,batch.messages.length-unseen.length-5));
-      unseen.forEach(message=>state.seen.add(message.key));
-      newAtEnd.forEach(message=>{
+
+      if(!state.hasBaseline){
+        if(batch.messages.length){
+          state.seen=new Set(batch.messages.map(message=>message.key));
+          state.lastSeenKey=batch.messages[batch.messages.length-1].key;
+          state.hasBaseline=true;
+          send("TEAMS_LIVE_STATUS",{running:true,text:"Initial Teams history loaded. Existing messages skipped: "+batch.messages.length+"."});
+        }
+        return;
+      }
+
+      const anchorIndex=batch.messages.findIndex(message=>message.key===state.lastSeenKey);
+      if(anchorIndex<0){
+        // The message list was virtualized/rebuilt. Re-baseline it instead of replaying old history.
+        state.seen=new Set(batch.messages.map(message=>message.key));
+        state.lastSeenKey=batch.messages.length?batch.messages[batch.messages.length-1].key:null;
+        send("TEAMS_LIVE_STATUS",{running:true,text:"Teams message list refreshed. Existing messages skipped; listening from the newest visible message."});
+        return;
+      }
+
+      const appended=batch.messages.slice(anchorIndex+1);
+      appended.forEach(message=>{
+        if(state.seen.has(message.key)) return;
+        state.seen.add(message.key);
         if(message.own) return;
         send("TEAMS_LIVE_MESSAGE",{
           groupName:groupName(),
@@ -255,6 +278,8 @@
           messageId:message.key
         });
       });
+
+      if(batch.messages.length) state.lastSeenKey=batch.messages[batch.messages.length-1].key;
       if(state.seen.size>3000) state.seen=new Set(Array.from(state.seen).slice(-1800));
     }
     state.waitingObserver=new MutationObserver(schedule);
