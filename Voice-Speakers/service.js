@@ -657,7 +657,7 @@ async function onTeamsMessage(message,sender) {
   const stableKey=groupKey+"|"+(messageId||[senderName,text,audioRef,audioUrl,message.timestamp||""].join("|"));
   if(await wasMessageProcessed(stableKey)) return;
   const now=Date.now();
-  const recentTextKey=groupKey+"|"+senderName+"|"+text.toLocaleLowerCase()+"|"+(audioRef||audioUrl)+"|"+String(message.messageTimestamp||"");
+  const recentTextKey=groupKey+"|"+senderName+"|"+text.toLocaleLowerCase()+"|"+String(!!(audioRef||audioUrl))+"|"+String(message.messageTimestamp||"");
   const recentAt=recentMessageIds.get(recentTextKey)||0;
   if(recentAt&&now-recentAt<5000) return;
   recentMessageIds.set(stableKey,now);
