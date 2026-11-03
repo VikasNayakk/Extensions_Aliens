@@ -5,7 +5,7 @@
   const state=window[STATE_KEY]={
     running:false,enabled:false,root:null,rootSelector:"",chatKey:"",
     seen:new Set(),toastSeen:new Map(),toastPrimed:false,lastSeenKey:null,hasBaseline:false,observer:null,waitingObserver:null,
-    toastObserver:null,toastPoller:null,poller:null,timer:null,suppressUntil:0
+    toastObserver:null,toastPoller:null,poller:null,timer:null,suppressUntil:0,activeAudio:null
   };
 
   const send=(type,payload={})=>{
@@ -204,6 +204,67 @@
     }
     return false;
   }
+  function isTimestampLine(line){
+    const value=clean(line).toLowerCase();
+    return /^(?:(?:today|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s*,?\s*)?\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?$/.test(value) ||
+      /^(?:today|yesterday)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?$/.test(value) ||
+      /^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$/.test(value) ||
+      /^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,?\s+\d{1,2}:\d{2}\s*(?:am|pm)?)?$/i.test(value);
+  }
+  function speechText(value){
+    const lines=String(value||"").split(/\r?\n/).map(clean).filter(line=>line&&!isTimestampLine(line));
+    return lines.join(" ")
+      .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu," ")
+      .replace(/[\u{1F1E6}-\u{1F1FF}]/gu," ")
+      .replace(/[#*0-9]\uFE0F?\u20E3/gu," ")
+      .replace(/\s+/g," ").trim();
+  }
+  function replyMeta(item,body){
+    const selectors=[
+      '[data-tid*="quoted-message" i]',
+      '[data-tid*="message-reply" i]',
+      '[data-tid*="reply-preview" i]',
+      '[data-testid*="quoted-message" i]',
+      '[aria-label*="replying to" i]',
+      '[aria-label*="quoted message" i]'
+    ];
+    const nodes=[];
+    for(const selector of selectors) nodes.push(...item.querySelectorAll(selector));
+    const unique=nodes.filter((node,index)=>nodes.indexOf(node)===index);
+    for(const node of unique){
+      const label=clean(node.getAttribute("aria-label")||node.getAttribute("title")||"");
+      const labelMatch=label.match(/(?:replying to|reply to|quoted message from|in reply to)\s*[:\-]?\s*(.+)$/i);
+      const authorNode=node.querySelector('[data-tid*="author" i],[data-testid*="author" i],[class*="author" i],strong,b');
+      const author=clean(authorNode?.innerText||authorNode?.textContent||labelMatch?.[1]||"");
+      if(author){
+        return {replyTo:author.replace(/^(?:replying to|reply to|quoted message from)\s*[:\-]?\s*/i,"").split(/\r?\n/)[0],nodes:unique};
+      }
+    }
+    return {replyTo:"",nodes:unique};
+  }
+  function audioAttachment(item,body,messageKey){
+    const audio=item.querySelector("audio")||body.querySelector("audio");
+    if(audio){
+      let ref=audio.getAttribute("data-vs-audio-ref");
+      if(!ref){
+        ref="vs-audio-"+String(messageKey||Math.random().toString(36).slice(2)).replace(/[^a-z0-9_-]/gi,"").slice(0,90);
+        audio.setAttribute("data-vs-audio-ref",ref);
+      }
+      return {audioRef:ref};
+    }
+    const audioPattern=/\.(?:mp3|m4a|aac|wav|ogg|opus|flac|webm)(?:[?#]|$)/i;
+    const candidates=Array.from(item.querySelectorAll("a[href], [data-url], [data-href], [data-download-url]"));
+    for(const node of candidates){
+      const raw=node.getAttribute("href")||node.getAttribute("data-url")||node.getAttribute("data-href")||node.getAttribute("data-download-url")||"";
+      const label=clean(node.getAttribute("aria-label")||node.getAttribute("title")||node.innerText||node.textContent);
+      if(!raw||(!audioPattern.test(raw)&&!audioPattern.test(label))) continue;
+      try{
+        const url=new URL(raw,location.href);
+        if(/^https?:$/.test(url.protocol)||url.protocol==="blob:") return {audioUrl:url.href};
+      }catch(_){}
+    }
+    return null;
+  }
   function extract(root){
     const items=findItems(root),messages=[],me=ownName();
     items.forEach((item,index)=>{
@@ -214,15 +275,28 @@
         const sender=clean(meta(body,authorSelectors)||groupAuthor||(labelMatch&&labelMatch[1])||"");
         if(!sender) return;
         const source=body.querySelector('[id^="content-"]')||body;
+        const messageId=body.id||body.getAttribute("data-message-id")||item.getAttribute("data-message-id")||"";
+        const key=messageId||[sender,clean(meta(body,timeSelectors)),speechText(source.innerText||source.textContent)].join("|");
+        const media=audioAttachment(item,body,key);
+        const reply=replyMeta(item,body);
         const clone=source.cloneNode(true);
         clone.querySelectorAll("button,[role='button'],svg,script,style,nav,[aria-hidden='true'],[data-tid*='reaction'],[data-testid*='reaction']").forEach(node=>node.remove());
-        const raw=clean(clone.innerText||clone.textContent);
-        if(!raw||/^Message by\s+/i.test(raw)) return;
+        reply.nodes.forEach(node=>{
+          if(clone.contains(node)) node.remove();
+          else {
+            const matching=clone.querySelector('[data-tid*="quoted-message" i],[data-tid*="message-reply" i],[data-tid*="reply-preview" i],[aria-label*="replying to" i],[aria-label*="quoted message" i]');
+            matching?.remove();
+          }
+        });
+        const raw=speechText(clone.innerText||clone.textContent);
+        if(!raw&&!media) return;
         const stamp=meta(body,timeSelectors)||meta(item,timeSelectors);
-        const id=body.id||body.getAttribute("data-message-id")||item.getAttribute("data-message-id")||"";
-        const key=id||[sender,stamp,raw].join("|");
         messages.push({
-          key,sender,text:redact(raw),timestamp:stamp,own:isOwn(item,body,sender,me),index:messages.length
+          key,sender,text:redact(raw),timestamp:stamp,
+          own:isOwn(item,body,sender,me),index:messages.length,
+          replyTo:reply.replyTo||"",
+          isReply:reply.nodes.length>0,
+          ...(media||{})
         });
       });
     });
@@ -257,6 +331,7 @@
     state.observer?.disconnect();
     state.waitingObserver?.disconnect();
     state.toastObserver?.disconnect();
+    if(state.activeAudio){try{state.activeAudio.pause();state.activeAudio.currentTime=0;}catch(_){}state.activeAudio=null;}
     if(state.timer) clearTimeout(state.timer);
     if(state.poller) clearInterval(state.poller);
     if(state.toastPoller) clearInterval(state.toastPoller);
@@ -286,7 +361,8 @@
     let text=clean(pair[2]);
     if(!text && lines[senderIndex+1]) text=clean(lines[senderIndex+1]);
     if(!text) return null;
-    return {groupName,sender:clean(pair[1]),text:redact(text)};
+    const timeLabel=lines.find(line=>isTimestampLine(line))||"";
+    return {groupName,sender:clean(pair[1]),text:speechText(redact(text)),timeLabel};
   }
   function scanToastNotifications(){
     if(!state.running||window.top!==window) return;
@@ -295,13 +371,13 @@
       if(!card) return;
       const parsed=parseToast(card);
       if(!parsed?.groupName||!parsed.sender||!parsed.text) return;
-      const key=[normalize(parsed.groupName),normalize(parsed.sender),normalize(parsed.text)].join("|");
-      const now=Date.now(),last=state.toastSeen.get(key)||0;
+      const key=[normalize(parsed.groupName),normalize(parsed.sender),normalize(parsed.text),parsed.timeLabel||card.id||""].join("|");
+      const now=Date.now();
       if(!state.toastPrimed) {
         state.toastSeen.set(key,now);
         return;
       }
-      if(now-last<6000) return;
+      if(state.toastSeen.has(key)) return;
       state.toastSeen.set(key,now);
       if(state.toastSeen.size>500){
         for(const [entry,time] of state.toastSeen) if(now-time>300000) state.toastSeen.delete(entry);
@@ -407,6 +483,44 @@
   }
 
   chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
+    if(message?.type==="TEAMS_PLAY_AUDIO"){
+      const ref=String(message.audioRef||"");
+      let audio=ref?Array.from(document.querySelectorAll("audio[data-vs-audio-ref]")).find(node=>node.getAttribute("data-vs-audio-ref")===ref):null;
+      if(!audio&&message.audioUrl){
+        try{audio=new Audio(message.audioUrl);}catch(_){}
+      }
+      if(!audio){
+        sendResponse({ok:false,error:"Audio player or attachment URL is not available in this Teams tab."});
+        return true;
+      }
+      try{
+        state.activeAudio?.pause();
+        state.activeAudio=audio;
+        audio.muted=false;
+        audio.volume=1;
+        audio.currentTime=0;
+        audio.onended=()=>{
+          if(state.activeAudio===audio) state.activeAudio=null;
+          chrome.runtime.sendMessage({type:"TEAMS_AUDIO_ENDED",playbackId:message.playbackId},()=>void chrome.runtime.lastError);
+        };
+        audio.onerror=()=>{
+          if(state.activeAudio===audio) state.activeAudio=null;
+          chrome.runtime.sendMessage({type:"TEAMS_AUDIO_FAILED",playbackId:message.playbackId,error:"Teams audio playback failed."},()=>void chrome.runtime.lastError);
+        };
+        audio.play().then(()=>sendResponse({ok:true,started:true})).catch(error=>sendResponse({ok:false,error:error?.message||"Browser blocked audio playback."}));
+      }catch(error){
+        sendResponse({ok:false,error:error?.message||"Could not start audio playback."});
+      }
+      return true;
+    }
+    if(message?.type==="TEAMS_STOP_AUDIO"){
+      if(state.activeAudio){
+        try{state.activeAudio.pause();state.activeAudio.currentTime=0;}catch(_){}
+        state.activeAudio=null;
+      }
+      sendResponse({ok:true});
+      return true;
+    }
     if(message?.type==="TEAMS_GET_GROUP_INFO_V17"){
       const name=groupName(),key=normalize(name),root=findRoot();
       const batch=root?extract(root.node):{messages:[]};
