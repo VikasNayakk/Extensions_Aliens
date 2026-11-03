@@ -366,7 +366,11 @@ async function onTeamsMessage(message,sender) {
     return;
   }
   const tabId=sender?.tab?.id;
-  if(!Number.isInteger(tabId) || !teamsUrl(sender?.url || "")) {
+  let sourceUrl=sender?.url || sender?.tab?.url || "";
+  if(!sourceUrl && Number.isInteger(tabId)) {
+    try { sourceUrl=(await chrome.tabs.get(tabId)).url || ""; } catch (_) {}
+  }
+  if(!Number.isInteger(tabId) || !teamsUrl(sourceUrl)) {
     await setStatus("Message received from an unknown tab; cannot safely route it to speech.");
     return;
   }
