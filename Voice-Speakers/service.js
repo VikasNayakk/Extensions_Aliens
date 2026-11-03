@@ -190,16 +190,15 @@ async function readLastFive(groupKey) {
     await setStatus("No readable incoming messages were found in "+group.name+".");
     return publishLiveState();
   }
-  const items=messages.map((message,index)=>({
+  const items=[{
     groupKey:group.key,
     groupName:group.name,
-    sender:message.sender,
-    text:message.text,
+    messages:messages.map(message=>({sender:message.sender,text:message.text,messageId:message.key})),
+    historyBatch:true,
     priority:groups.indexOf(group),
-    announceGroup:index===0,
-    sequence:Date.now()+index,
-    messageId:message.key
-  }));
+    announceGroup:true,
+    sequence:Date.now()
+  }];
   await enqueueSpeech(items);
   group.readHistory=true;
   await chrome.storage.local.set({[TEAMS_GROUPS_KEY]:groups});
@@ -272,7 +271,14 @@ async function processSpeechQueue() {
 function speakCurrentPhase() {
   if(!speechCurrent) return;
   const current=speechCurrent;
-  const text=current.phase==="group"?current.groupName:current.sender+" ne kaha: "+current.text;
+  const historyMessage=current.historyBatch
+    ? current.messages[Math.min(current.messageIndex||0,current.messages.length-1)]
+    : null;
+  const text=current.phase==="group"
+    ? current.groupName
+    : historyMessage
+      ? historyMessage.sender+" ne kaha: "+historyMessage.text
+      : current.sender+" ne kaha: "+current.text;
   chrome.tts.speak(text,{
     enqueue:false,
     lang:"hi-IN",
@@ -295,7 +301,12 @@ function speakCurrentPhase() {
           });
           setStatus("Group "+current.groupName+" announced. Waiting 5 seconds before the message.");
         } else if(event.type==="end") {
-          finishCurrentSpeech();
+          if(current.historyBatch && (current.messageIndex||0)+1<current.messages.length) {
+            current.messageIndex=(current.messageIndex||0)+1;
+            persistSpeechQueue().then(speakCurrentPhase);
+          } else {
+            finishCurrentSpeech();
+          }
         }
       } else if(["error","interrupted","cancelled"].includes(event.type)) {
         if(event.type==="error") chrome.storage.local.set({teamsLastStatus:"Speech error: "+(event.errorMessage||"TTS could not read the message.")});
