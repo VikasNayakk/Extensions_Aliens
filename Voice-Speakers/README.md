@@ -2,7 +2,7 @@
 
 Chrome Manifest V3 extension that reads ChatGPT replies aloud.
 
-Current Teams live reader release: **1.5.9**.
+Current Teams live reader release: **1.6.0**.
 
 ## Current workflow
 
@@ -16,8 +16,7 @@ Current Teams live reader release: **1.5.9**.
 7. A live message is announced as: group name, then a five-second pause, then sender name and message. Messages are queued one by one by group priority.
 8. Turn OFF to stop monitoring and clear queued speech.
 
-The Teams web client renders the open chat in each tab. Voice Speakers now creates one dedicated inactive monitor tab per selected group using the chat ID and Teams deep link. Your normal Teams tab can open any other group; selected group monitors continue in their own background tabs. If a monitor tab is closed, the extension recreates it while ON. Existing groups saved before v1.5.8 are migrated automatically when their old linked tab is still open on that group. If not, open that group and click **Add currently open Teams group** once so the extension can capture its chat ID and provision the background monitor. Monitor tabs are marked non-auto-discardable and are recreated if closed.
-
+This browser-only mode watches Teams in-app notification cards in an open Teams tab and matches each notification's group name against your selected groups. It does not use Microsoft Graph, Entra app registration, Power Automate, or separate hidden monitor tabs. Keep at least one Teams web tab open. In Teams, enable message previews in notifications and make sure chat notifications are shown as banners. Existing notification cards are ignored when monitoring first starts; new cards are processed after that. If Teams does not create an in-app notification card for a chat, the extension cannot read that message in this mode. The one-time last-five option reads from the currently open chat when you add it.
 
 ## Install locally
 1. Download or clone this repository.
