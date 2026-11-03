@@ -3,13 +3,19 @@
 Chrome Manifest V3 extension that reads ChatGPT replies aloud.
 
 ## Current workflow
-1. Open a ChatGPT conversation at chatgpt.com or chat.openai.com.
-2. Click the Voice Speakers toolbar icon. The side panel opens and loads the active conversation.
-3. The panel lists your prompts. The latest prompt is selected automatically.
-4. Select any prompt or search your prompt text; its associated ChatGPT reply appears.
-5. Press **Read selected reply** to hear the reply paired with that prompt, or **Read latest** for the newest prompt. Long replies are read in sequential chunks. Adjust speech rate and choose a browser-provided voice (default, female-sounding, or male-sounding).
 
-Use **Refresh** after new messages arrive. The extension reads the currently open conversation's rendered page; it does not fetch your account-wide ChatGPT history or hidden conversations.
+### Microsoft Teams live reader
+1. Click the Voice Speakers toolbar icon. A compact popup opens; it does not open the side panel automatically.
+2. Switch **Live message reading** to **ON** once.
+3. The extension monitors all currently open Teams tabs at `teams.cloud.microsoft` and `teams.microsoft.com`, including tabs running in the background.
+4. Switching to another browser tab does not stop the monitor. New Teams tabs are monitored automatically while the setting remains ON.
+5. New incoming messages are spoken as **“Sender name ne kaha: message text.”**
+6. Switch to **OFF** to stop monitoring and stop queued speech.
+
+Only messages in Teams chat panes that are open/rendered in the browser are monitored. Hidden chats and unopened account-wide chat history are not fetched. When a Teams chat is changed, its already-loaded messages are used as a baseline and skipped.
+
+### ChatGPT reply reader
+The existing ChatGPT conversation reader remains in `sidepanel.html`; it can be opened separately when needed.
 
 ## Install locally
 1. Download or clone this repository.
@@ -27,11 +33,3 @@ Use **Refresh** after new messages arrive. The extension reads the currently ope
 - Existing optional AI analysis settings remain available in the extension settings page.
 
 
-## Microsoft Teams live reading
-1. Open Microsoft Teams in Chrome at `teams.cloud.microsoft` or `teams.microsoft.com`.
-2. Open the chat you want to monitor and click the Voice Speakers toolbar icon.
-3. In **Microsoft Teams — Live Reader**, click **Start live reading**.
-4. Keep the side panel open. When a new incoming message appears in the currently open chat, the extension announces: **“Sender name ne kaha: message text.”**
-5. Click **Stop** to stop monitoring and speech.
-
-The monitor starts with a baseline of the messages already on screen, so it does not read old chat history. When you switch to another chat, the new chat's existing messages are skipped and monitoring continues for messages that arrive afterward. Messages sent by you are filtered where Teams exposes an outgoing-message marker. Common password, OTP, API-key and access-token patterns are masked before speech. The extension reads the open chat's rendered UI only; it does not read every chat in the Teams account or access hidden conversations.
