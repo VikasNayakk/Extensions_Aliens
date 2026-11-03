@@ -4,7 +4,8 @@
 
   const state=window[STATE_KEY]={
     running:false,enabled:false,root:null,rootSelector:"",chatKey:"",
-    seen:new Set(),lastSeenKey:null,hasBaseline:false,observer:null,waitingObserver:null,poller:null,timer:null,suppressUntil:0
+    seen:new Set(),toastSeen:new Map(),lastSeenKey:null,hasBaseline:false,observer:null,waitingObserver:null,
+    toastObserver:null,toastPoller:null,poller:null,timer:null,suppressUntil:0
   };
 
   const send=(type,payload={})=>{
@@ -255,16 +256,73 @@
     state.enabled=false;
     state.observer?.disconnect();
     state.waitingObserver?.disconnect();
+    state.toastObserver?.disconnect();
     if(state.timer) clearTimeout(state.timer);
     if(state.poller) clearInterval(state.poller);
-    state.observer=state.waitingObserver=state.poller=null;
+    if(state.toastPoller) clearInterval(state.toastPoller);
+    state.observer=state.waitingObserver=state.toastObserver=state.poller=state.toastPoller=null;
     state.root=null;
   }
+  const toastBoilerplate=/^(microsoft teams|more options|send reaction|dismiss notification|reply|profile picture|close|notification)$/i;
+  function toastCard(button){
+    for(let node=button,depth=0;node&&node!==document.body&&depth<10;node=node.parentElement,depth++){
+      const lines=String(node.innerText||node.textContent||"").split(/\\r?\\n/).map(clean).filter(Boolean);
+      const senderIndex=lines.findIndex(line=>/^[^:]{1,90}:\\s*\\S/.test(line));
+      if(senderIndex>0 && lines.length<=45){
+        const group=lines.slice(0,senderIndex).reverse().find(line=>!toastBoilerplate.test(line)&&!/^\\d{1,2}[:/]\\d/.test(line));
+        if(group) return node;
+      }
+    }
+    return null;
+  }
+  function parseToast(card){
+    const lines=String(card.innerText||card.textContent||"").split(/\\r?\\n/).map(clean).filter(Boolean);
+    const senderIndex=lines.findIndex(line=>/^[^:]{1,90}:\\s*\\S/.test(line));
+    if(senderIndex<=0) return null;
+    const groupName=lines.slice(0,senderIndex).reverse().find(line=>!toastBoilerplate.test(line)&&!/^\\d{1,2}[:/]\\d/.test(line));
+    if(!groupName) return null;
+    const pair=lines[senderIndex].match(/^([^:]{1,90}):\\s*(.*)$/);
+    if(!pair) return null;
+    let text=clean(pair[2]);
+    if(!text && lines[senderIndex+1]) text=clean(lines[senderIndex+1]);
+    if(!text) return null;
+    return {groupName,sender:clean(pair[1]),text:redact(text)};
+  }
+  function scanToastNotifications(){
+    if(!state.running||window.top!==window) return;
+    document.querySelectorAll('[aria-label="Dismiss notification"]').forEach(button=>{
+      const card=toastCard(button);
+      if(!card) return;
+      const parsed=parseToast(card);
+      if(!parsed?.groupName||!parsed.sender||!parsed.text) return;
+      const key=[normalize(parsed.groupName),normalize(parsed.sender),normalize(parsed.text)].join("|");
+      const now=Date.now(),last=state.toastSeen.get(key)||0;
+      if(now-last<90000) return;
+      state.toastSeen.set(key,now);
+      if(state.toastSeen.size>500){
+        for(const [entry,time] of state.toastSeen) if(now-time>300000) state.toastSeen.delete(entry);
+        if(state.toastSeen.size>500) state.toastSeen.clear();
+      }
+      send("TEAMS_LIVE_MESSAGE",{
+        groupName:parsed.groupName,
+        groupKey:normalize(parsed.groupName),
+        sender:parsed.sender,
+        text:parsed.text,
+        timestamp:now,
+        messageId:"teams-toast:"+key
+      });
+    });
+  }
+
   function start(){
     if(!/^https:\/\/(teams\.cloud\.microsoft|teams\.microsoft\.com)\//i.test(location.href)||state.running) return;
     state.running=state.enabled=true;
     state.root=null;
     state.seen.clear();
+    scanToastNotifications();
+    state.toastObserver=new MutationObserver(scanToastNotifications);
+    state.toastObserver.observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+    state.toastPoller=setInterval(scanToastNotifications,900);
     function schedule(){
       if(!state.running||state.timer) return;
       state.timer=setTimeout(()=>{state.timer=null;scan();},180);
@@ -344,21 +402,27 @@
   }
 
   chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
+    if(message?.type==="TEAMS_GET_GROUP_INFO_V17"){
+      const name=groupName(),key=normalize(name),root=findRoot();
+      const batch=root?extract(root.node):{messages:[]};
+      const error=!name?"Teams group name could not be detected.":!root?"Open the group chat so its messages are visible.":"";
+      sendResponse({ok:!!name&&!!root,groupName:name,groupKey:key,baselineCount:batch.messages.length,error});
+      return true;
+    }
     if(message?.type==="TEAMS_GET_CHAT_INFO_V16"){
       const info=chatInfo();
       sendResponse(info);
       return true;
     }
     if(message?.type==="TEAMS_READ_LAST_FIVE_V16"){
-      const info=chatInfo();
-      if(!info.ok||info.groupKey!==message.groupKey){
-        sendResponse({ok:false,error:"The current Teams tab is no longer on this selected group. Open the group and add it again."});
+      const name=groupName(),key=normalize(name),root=findRoot();
+      if(!name||!root||key!==message.groupKey){
+        sendResponse({ok:false,error:"The current Teams tab is no longer on this selected group. Open that group and try again."});
         return true;
       }
-      const root=findRoot();
-      const batch=root?extract(root.node):{messages:[]};
+      const batch=extract(root.node);
       const messages=batch.messages.filter(message=>!message.own).slice(-5);
-      sendResponse({ok:true,groupName:info.groupName,messages});
+      sendResponse({ok:true,groupName:name,messages});
       return true;
     }
   });
