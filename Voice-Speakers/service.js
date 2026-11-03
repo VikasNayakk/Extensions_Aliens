@@ -10,12 +10,13 @@ const TEAMS_LIVE_KEY = "teamsLiveEnabled";
 const TEAMS_GROUPS_KEY = "teamsSelectedGroups";
 const TEAMS_READ_COUNT = "teamsReadCount";
 const TEAMS_RECENT_EVENTS = "teamsRecentEvents";
-const TTS_ALARM = "teams-live-announce-message";
 const recentMessageIds = new Set();
 let speechQueue = [];
 let speechCurrent = null;
 let speechQueueLoaded = false;
 let speechProcessing = false;
+let speechDispatchTimer = null;
+let groupDelayTimer = null;
 
 const teamsUrl = url => /^https:\/\/(teams\.cloud\.microsoft|teams\.microsoft\.com)\//i.test(url || "");
 const normalizeGroup = value => String(value || "").normalize("NFKC").replace(/\s+/g," ").trim().toLowerCase();
@@ -76,7 +77,10 @@ async function injectTeamsTabs() {
 async function setTeamsLiveEnabled(enabled) {
   await chrome.storage.local.set({[TEAMS_LIVE_KEY]:!!enabled});
   if(!enabled) {
-    chrome.alarms.clear(TTS_ALARM);
+    if(speechDispatchTimer) clearTimeout(speechDispatchTimer);
+    if(groupDelayTimer) clearTimeout(groupDelayTimer);
+    speechDispatchTimer=null;
+    groupDelayTimer=null;
     chrome.tts.stop();
     speechQueue=[];
     speechCurrent=null;
@@ -209,7 +213,15 @@ async function hydrateSpeechQueue() {
   speechQueue=Array.isArray(saved.teamsSpeechQueue)?saved.teamsSpeechQueue:[];
   speechCurrent=saved.teamsSpeechCurrent||null;
   speechQueueLoaded=true;
-  if(speechCurrent?.phase==="gap") chrome.alarms.create(TTS_ALARM,{when:Date.now()+500});
+  if(speechCurrent?.phase==="gap") {
+    const sequence=speechCurrent.sequence;
+    groupDelayTimer=setTimeout(()=>{
+      if(speechCurrent?.sequence===sequence && speechCurrent.phase==="gap") {
+        speechCurrent.phase="message";
+        persistSpeechQueue().then(speakCurrentPhase);
+      }
+    },5000);
+  }
 }
 
 async function persistSpeechQueue() {
@@ -223,7 +235,15 @@ async function enqueueSpeech(items) {
   await hydrateSpeechQueue();
   speechQueue.push(...items);
   await persistSpeechQueue();
-  processSpeechQueue();
+  scheduleSpeechQueue();
+}
+
+function scheduleSpeechQueue() {
+  if(speechCurrent || speechDispatchTimer || !speechQueue.length) return;
+  speechDispatchTimer=setTimeout(()=>{
+    speechDispatchTimer=null;
+    processSpeechQueue();
+  },1000);
 }
 
 async function currentGroupPriority(groupKey) {
@@ -262,7 +282,17 @@ function speakCurrentPhase() {
       if(event.type==="end") {
         if(current.phase==="group") {
           current.phase="gap";
-          persistSpeechQueue().then(()=>chrome.alarms.create(TTS_ALARM,{when:Date.now()+5000}));
+          persistSpeechQueue().then(()=>{
+            if(groupDelayTimer) clearTimeout(groupDelayTimer);
+            const sequence=current.sequence;
+            groupDelayTimer=setTimeout(()=>{
+              groupDelayTimer=null;
+              if(speechCurrent?.sequence===sequence && speechCurrent.phase==="gap") {
+                speechCurrent.phase="message";
+                persistSpeechQueue().then(speakCurrentPhase);
+              }
+            },5000);
+          });
           setStatus("Group "+current.groupName+" announced. Waiting 5 seconds before the message.");
         } else if(event.type==="end") {
           finishCurrentSpeech();
@@ -282,19 +312,11 @@ function speakCurrentPhase() {
 
 async function finishCurrentSpeech() {
   speechCurrent=null;
+  if(groupDelayTimer) clearTimeout(groupDelayTimer);
+  groupDelayTimer=null;
   await persistSpeechQueue();
-  processSpeechQueue();
+  scheduleSpeechQueue();
 }
-
-chrome.alarms.onAlarm.addListener(alarm=>{
-  if(alarm.name!==TTS_ALARM) return;
-  hydrateSpeechQueue().then(()=>{
-    if(speechCurrent?.phase==="gap") {
-      speechCurrent.phase="message";
-      persistSpeechQueue().then(speakCurrentPhase);
-    }
-  });
-});
 
 async function onTeamsMessage(message,sender) {
   const enabled=await chrome.storage.local.get(TEAMS_LIVE_KEY);
