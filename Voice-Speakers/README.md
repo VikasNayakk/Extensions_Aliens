@@ -16,7 +16,7 @@ Current Teams live reader release: **1.5.7**.
 7. A live message is announced as: group name, then a five-second pause, then sender name and message. Messages are queued one by one by group priority.
 8. Turn OFF to stop monitoring and clear queued speech.
 
-The Teams web client renders the open chat in each tab. Voice Speakers now creates one dedicated inactive monitor tab per selected group using the chat ID and Teams deep link. Your normal Teams tab can open any other group; selected group monitors continue in their own background tabs. If a monitor tab is closed, the extension recreates it while ON. Existing groups saved before v1.5.8 do not yet have a chat ID/deep link, so re-add each selected group once to provision its dedicated background monitor.
+The Teams web client renders the open chat in each tab. Voice Speakers now creates one dedicated inactive monitor tab per selected group using the chat ID and Teams deep link. Your normal Teams tab can open any other group; selected group monitors continue in their own background tabs. If a monitor tab is closed, the extension recreates it while ON. Existing groups saved before v1.5.8 are migrated automatically when their old linked tab is still open on that group. If not, open that group and click **Add currently open Teams group** once so the extension can capture its chat ID and provision the background monitor.
 
 
 ## Install locally
