@@ -1,40 +1,35 @@
 const $ = id => document.getElementById(id);
-$("settings").addEventListener("click", () => chrome.runtime.openOptionsPage());
-$("openPanel").addEventListener("click", async () => {
-  const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
-  if (tab?.id) chrome.sidePanel.open({tabId:tab.id});
-});
-$("readClipboard").addEventListener("click", async () => {
-  try { $("chatText").value = await navigator.clipboard.readText(); $("status").textContent = "Clipboard text pasted."; }
-  catch { $("status").textContent = "Clipboard access denied. Paste with Ctrl+V."; }
-});
-$("analyze").addEventListener("click", runAnalysis);
-$("copy").addEventListener("click", () => navigator.clipboard.writeText($("result").textContent));
-$("speak").addEventListener("click", speak);
-$("stop").addEventListener("click", () => speechSynthesis.cancel());
 
-async function runAnalysis() {
-  const text = $("chatText").value.trim();
-  if (!text) { $("status").textContent = "Paste messages first."; return; }
-  $("analyze").disabled = true;
-  $("status").textContent = "Analyzing…";
-  try {
-    const result = await chrome.runtime.sendMessage({type:"ANALYZE_MESSAGES", text});
-    $("result").textContent = result.output;
-    $("resultWrap").hidden = false;
-    $("status").textContent = result.remote ? "AI analysis complete." : "Local structured extraction complete.";
-  } catch (e) { $("status").textContent = "Analysis failed: " + e.message; }
-  finally { $("analyze").disabled = false; }
+function paint(data) {
+  const enabled=!!data.teamsLiveEnabled;
+  $("statusPill").textContent=enabled?"ON":"OFF";
+  $("statusPill").className="pill "+(enabled?"on":"off");
+  $("power").className="switch "+(enabled?"on":"off");
+  $("power").setAttribute("aria-pressed",String(enabled));
+  $("power").setAttribute("aria-label",enabled?"Turn Teams live reading off":"Turn Teams live reading on");
+  $("power").disabled=false;
+  $("tabCount").textContent=String(data.teamsTabCount||0);
+  $("readCount").textContent=String(data.teamsReadCount||0);
+  $("activityState").textContent=enabled?"Listening":"Paused";
+  $("status").textContent=data.teamsLastStatus||(enabled?"Monitoring open Teams tabs, including background tabs.":"Live reading is OFF.");
+  const events=$("events");
+  events.replaceChildren();
+  const list=Array.isArray(data.teamsRecentEvents)?data.teamsRecentEvents:[];
+  if(!list.length){const empty=document.createElement("div");empty.className="empty";empty.textContent="No new messages yet.";events.append(empty);}
+  else list.slice(0,5).forEach(entry=>{const row=document.createElement("div");row.className="event";const sender=document.createElement("strong");sender.textContent=entry.sender||"Unknown sender";const message=document.createElement("span");message.textContent=entry.text||"";row.append(sender,message);events.append(row);});
 }
-async function speak() {
-  const text = $("result").textContent;
-  if (!text) return;
-  speechSynthesis.cancel();
-  const {voiceRate=1} = await chrome.storage.local.get("voiceRate");
-  const chunks = text.match(/[\s\S]{1,1800}/g) || [];
-  for (const chunk of chunks) {
-    const utterance = new SpeechSynthesisUtterance(chunk);
-    utterance.rate = voiceRate;
-    speechSynthesis.speak(utterance);
-  }
-}
+
+async function refresh(){try{const state=await chrome.runtime.sendMessage({type:"GET_TEAMS_LIVE_STATUS"});paint(state||{});}catch(e){$("status").textContent="Could not read extension state: "+e.message;}}
+
+$("power").addEventListener("click",async()=>{
+  const next=$("power").getAttribute("aria-pressed")!=="true";
+  $("power").disabled=true;
+  $("status").textContent=next?"Turning live reading ON…":"Turning live reading OFF…";
+  try{const state=await chrome.runtime.sendMessage({type:"SET_TEAMS_LIVE",enabled:next});paint(state||{});}
+  catch(e){$("status").textContent="Unable to change state: "+e.message;}
+  finally{$("power").disabled=false;}
+});
+$("settings").addEventListener("click",()=>chrome.runtime.openOptionsPage());
+chrome.runtime.onMessage.addListener(message=>{if(message?.type==="TEAMS_LIVE_STATE_UPDATED")paint(message.state||{});});
+chrome.storage.onChanged.addListener((changes,area)=>{if(area==="local" && Object.keys(changes).some(k=>["teamsLiveEnabled","teamsReadCount","teamsRecentEvents","teamsLastStatus"].includes(k)))refresh();});
+refresh();
