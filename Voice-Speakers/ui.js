@@ -8,6 +8,359 @@ function setStatus(message) {
   $("status").textContent = message;
 }
 
+let teamsMonitorTabId = null;
+let teamsDetectedCount = 0;
+let teamsSpeechQueue = [];
+let teamsSpeechActive = false;
+
+function teamsMonitorControl(action) {
+  const stateKey = "__voiceSpeakersTeamsLiveReaderV13";
+  const notify = (type, payload) => {
+    try { chrome.runtime.sendMessage({ type, ...payload }, () => void chrome.runtime.lastError); } catch (_) {}
+  };
+
+  if (action === "stop") {
+    const old = window[stateKey];
+    if (old) {
+      old.running = false;
+      if (old.observer) old.observer.disconnect();
+      if (old.timer) clearTimeout(old.timer);
+      if (old.poller) clearInterval(old.poller);
+      delete window[stateKey];
+    }
+    notify("TEAMS_LIVE_STATUS", { running: false, text: "Live reading stopped." });
+    return { ok: true, stopped: true };
+  }
+
+  if (!/^https:\/\/(teams\.cloud\.microsoft|teams\.microsoft\.com)\//i.test(location.href)) {
+    return { ok: false, error: "Open Microsoft Teams first." };
+  }
+
+  const existing = window[stateKey];
+  if (existing && existing.running) {
+    notify("TEAMS_LIVE_STATUS", { running: true, text: "Live reading is already active in this chat." });
+    return { ok: true, alreadyRunning: true };
+  }
+
+  const rootSelectors = [
+    "#chat-pane-list",
+    '[data-tid="chat-pane-message-list"]',
+    '[data-tid="thread-body-scrollable-content"]',
+    '[data-tid="scrollable-thread-body"]',
+    'div[role="log"][aria-label*="messages" i]',
+    'div[role="list"][aria-label*="messages" i]',
+    '[data-tid="message-pane"]'
+  ];
+  const bodySelector = '[id^="message-body-"]';
+  const authorSelector = '[data-tid="message-author-name"]';
+  const findRoot = () => rootSelectors.map(selector => document.querySelector(selector)).find(Boolean) || null;
+  const clean = value => String(value || "").replace(/\u200b/g, "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+
+  function findItems(root) {
+    if (!root) return [];
+    const direct = Array.from(root.children || []).filter(node => node.querySelector(bodySelector));
+    if (direct.length) return direct;
+
+    const selectors = [
+      '[data-tid="message-list-item"]',
+      '[data-tid="message-group-container"]',
+      'div[role="listitem"]'
+    ];
+    for (const selector of selectors) {
+      const items = Array.from(root.querySelectorAll(selector)).filter(node => node.querySelector(bodySelector));
+      if (items.length) return items.filter(node => !items.some(other => other !== node && other.contains(node)));
+    }
+
+    return Array.from(root.querySelectorAll(bodySelector)).map(body =>
+      body.closest('[data-tid="message-list-item"], [data-tid="message-group-container"], div[role="listitem"]') || body.parentElement
+    ).filter((node, index, all) => node && all.indexOf(node) === index);
+  }
+
+  function closestAuthor(item) {
+    let node = item;
+    for (let depth = 0; node && depth < 5; depth++, node = node.parentElement) {
+      const author = node.querySelector(authorSelector);
+      if (author && clean(author.innerText || author.textContent)) return clean(author.innerText || author.textContent);
+    }
+    return "";
+  }
+
+  function isOutgoing(item, author) {
+    if (/^(you|me)$/i.test(author)) return true;
+    let node = item;
+    for (let depth = 0; node && depth < 7; depth++, node = node.parentElement) {
+      const classes = typeof node.className === "string" ? node.className : "";
+      const markers = [
+        classes,
+        node.getAttribute("data-tid"),
+        node.getAttribute("data-testid"),
+        node.getAttribute("data-message-direction"),
+        node.getAttribute("data-is-own-message"),
+        node.getAttribute("aria-label")
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (/outgoing|message-out|own-message|self-message|sent-by-me|from-me|data-is-own-message true|you sent|you said/.test(markers)) return true;
+    }
+    return false;
+  }
+
+  function redactSensitive(value) {
+    return clean(value)
+      .replace(/\b(password|passcode|passwd|pwd|otp|one[- ]time code|api[ _-]?key|access[ _-]?token|secret|2fa)\b\s*(?:is\s*)?[:=]?\s*([^\s,;]+)/gi, "$1 [hidden]")
+      .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer [hidden]")
+      .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})\b/g, "[access token hidden]");
+  }
+
+  function readEntries(root) {
+    const items = findItems(root);
+    const entries = [];
+    let lastAuthor = "";
+    items.forEach((item, itemIndex) => {
+      const bodies = Array.from(item.matches?.(bodySelector) ? [item] : item.querySelectorAll(bodySelector));
+      const author = closestAuthor(item) || lastAuthor;
+      if (author) lastAuthor = author;
+      bodies.forEach(body => {
+        const timeNode = item.querySelector('[id^="timestamp-"]') || item.querySelector("time[datetime]");
+        const content = body.querySelector('[id^="content-"]') || body;
+        const clone = content.cloneNode(true);
+        clone.querySelectorAll("button,[role='button'],svg,script,style,[aria-hidden='true'],[data-tid*='reaction'],[data-testid*='reaction']").forEach(node => node.remove());
+        const rawText = clean(clone.innerText || clone.textContent);
+        const text = redactSensitive(rawText);
+        if (!text || !author) return;
+        const timestamp = timeNode
+          ? clean(timeNode.getAttribute("datetime") || timeNode.innerText || timeNode.textContent)
+          : "";
+        const id = body.id || "";
+        const key = id || [author, timestamp, rawText].join("|");
+        entries.push({
+          key,
+          sender: author,
+          text,
+          timestamp,
+          outgoing: isOutgoing(item, author),
+          itemIndex
+        });
+      });
+    });
+    return entries;
+  }
+
+  function conversationKey(root) {
+    const header = document.querySelector('[data-tid="entity-header"]') ||
+      document.querySelector('[data-tid="thread-header"]') ||
+      document.querySelector('[data-tid="chat-header"]');
+    const title = clean(header && (header.innerText || header.textContent));
+    return location.pathname + "|" + (title || (root && (root.getAttribute("data-tid") || root.id)) || "teams-chat");
+  }
+
+  const root = findRoot();
+  if (!root) return { ok: false, error: "Teams is open, but I couldn't find the chat message list. Open an individual chat and try again." };
+  const initialEntries = readEntries(root);
+  if (!initialEntries.length) return { ok: false, error: "I found the Teams chat area, but no message items. Open a chat with messages and try again." };
+
+  const state = {
+    running: true,
+    root,
+    chatKey: conversationKey(root),
+    seen: new Set(initialEntries.map(entry => entry.key)),
+    observer: null,
+    timer: null,
+    poller: null
+  };
+  window[stateKey] = state;
+
+  function scan() {
+    if (!state.running) return;
+    const currentRoot = findRoot();
+    if (!currentRoot) return;
+    const currentChatKey = conversationKey(currentRoot);
+    const entries = readEntries(currentRoot);
+
+    if (currentRoot !== state.root || currentChatKey !== state.chatKey) {
+      state.root = currentRoot;
+      state.chatKey = currentChatKey;
+      state.seen = new Set(entries.map(entry => entry.key));
+      notify("TEAMS_LIVE_STATUS", { running: true, text: "Chat changed. Previous messages skipped; listening for new messages here." });
+      return;
+    }
+
+    entries.forEach((entry, index) => {
+      if (state.seen.has(entry.key)) return;
+      state.seen.add(entry.key);
+
+      // Messages added while loading older history usually appear at the top.
+      // Only announce newly appended items near the bottom of the active chat.
+      const isNearLatest = index >= Math.max(0, entries.length - 5);
+      if (!isNearLatest || entry.outgoing) return;
+
+      notify("TEAMS_LIVE_MESSAGE", {
+        sender: entry.sender,
+        text: entry.text,
+        timestamp: entry.timestamp,
+        messageId: entry.key
+      });
+    });
+
+    if (state.seen.size > 2500) state.seen = new Set(Array.from(state.seen).slice(-1500));
+  }
+
+  const scheduleScan = () => {
+    if (!state.running || state.timer) return;
+    state.timer = setTimeout(() => {
+      state.timer = null;
+      scan();
+    }, 250);
+  };
+
+  state.observer = new MutationObserver(scheduleScan);
+  state.observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  state.poller = setInterval(scan, 1500);
+  notify("TEAMS_LIVE_STATUS", {
+    running: true,
+    text: "Live reading is on. Listening for new incoming messages in this chat; existing messages were skipped."
+  });
+  return { ok: true, baselineCount: initialEntries.length };
+}
+
+function addTeamsFeedItem(sender, message) {
+  const feed = $("teamsFeed");
+  if (!feed) return;
+  const empty = feed.querySelector(".empty");
+  if (empty) empty.remove();
+  const item = document.createElement("div");
+  item.className = "teams-feed-item";
+  const name = document.createElement("strong");
+  name.textContent = sender;
+  const body = document.createElement("span");
+  body.textContent = message;
+  item.append(name, body);
+  feed.prepend(item);
+  while (feed.children.length > 8) feed.lastElementChild.remove();
+}
+
+function speakTeamsQueue() {
+  if (teamsSpeechActive || !teamsSpeechQueue.length || !("speechSynthesis" in window)) return;
+  const entry = teamsSpeechQueue.shift();
+  const chunks = splitForSpeech(entry.text, 200);
+  let first = true;
+  teamsSpeechActive = true;
+
+  const readNext = () => {
+    if (!chunks.length) {
+      teamsSpeechActive = false;
+      speakTeamsQueue();
+      return;
+    }
+    let part = chunks.shift();
+    if (first) {
+      part = entry.sender + " ne kaha: " + part;
+      first = false;
+    }
+    const utterance = new SpeechSynthesisUtterance(part);
+    utterance.rate = Number($("rate")?.value) || 0.8;
+    const choice = $("voice")?.value || "auto";
+    let voice = null;
+    if (choice.startsWith("v")) voice = voices[Number(choice.slice(1))] || null;
+    else if (choice !== "auto") {
+      const pattern = choice === "female"
+        ? /female|zira|samantha|victoria|karen|aria|jenny|susan|hazel|ava/i
+        : /male|david|mark|guy|george|james|daniel/i;
+      voice = voices.find(candidate => pattern.test(candidate.name)) || null;
+    }
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang || "hi-IN";
+    } else {
+      utterance.lang = "hi-IN";
+    }
+    utterance.onend = readNext;
+    utterance.onerror = () => {
+      teamsSpeechActive = false;
+      speakTeamsQueue();
+    };
+    window.speechSynthesis.speak(utterance);
+  };
+
+  window.speechSynthesis.resume();
+  readNext();
+}
+
+async function startTeamsLiveReading() {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab || !tab.id || !/^https:\/\/(teams\.cloud\.microsoft|teams\.microsoft\.com)\//i.test(tab.url || "")) {
+    $("teamsStatus").textContent = "Open Microsoft Teams in the active tab, then start live reading.";
+    return;
+  }
+  $("teamsStart").disabled = true;
+  $("teamsStatus").textContent = "Connecting to the open Teams chat…";
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: teamsMonitorControl,
+      args: ["start"]
+    });
+    const result = results && results[0] && results[0].result;
+    if (!result || !result.ok) throw new Error(result?.error || "Could not start the Teams monitor.");
+    teamsMonitorTabId = tab.id;
+    await chrome.storage.local.set({ teamsMonitorTabId });
+    $("teamsStop").disabled = false;
+    $("teamsStatus").textContent = "Live reading is on. New incoming messages will be announced with the sender's name.";
+  } catch (error) {
+    $("teamsStatus").textContent = error?.message || "Could not start live reading.";
+  } finally {
+    $("teamsStart").disabled = false;
+  }
+}
+
+async function stopTeamsLiveReading() {
+  try {
+    const tabId = teamsMonitorTabId || (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]?.id;
+    if (tabId) await chrome.scripting.executeScript({ target: { tabId }, func: teamsMonitorControl, args: ["stop"] });
+  } catch (_) {}
+  teamsMonitorTabId = null;
+  await chrome.storage.local.remove("teamsMonitorTabId");
+  teamsSpeechQueue = [];
+  teamsSpeechActive = false;
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  $("teamsStart").disabled = false;
+  $("teamsStop").disabled = true;
+  $("teamsStatus").textContent = "Live reading stopped.";
+}
+
+async function initializeActiveTab() {
+  const settings = await chrome.storage.local.get(["teamsMonitorTabId"]);
+  teamsMonitorTabId = settings.teamsMonitorTabId || null;
+  if (teamsMonitorTabId) {
+    $("teamsStop").disabled = false;
+    $("teamsStatus").textContent = "A Teams monitor may still be running. Keep this panel open to hear new messages.";
+  }
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (/^https:\/\/(teams\.cloud\.microsoft|teams\.microsoft\.com)\//i.test(tab?.url || "")) {
+    $("teamsStatus").textContent = "Teams detected. Start live reading to announce new incoming messages.";
+  } else {
+    loadConversation();
+  }
+}
+
+chrome.runtime.onMessage.addListener(message => {
+  if (message?.type === "TEAMS_LIVE_STATUS") {
+    if ($("teamsStatus")) {
+      $("teamsStatus").textContent = message.text || (message.running ? "Live reading is on." : "Live reading stopped.");
+      $("teamsStop").disabled = !message.running;
+      $("teamsStart").disabled = !!message.running;
+    }
+  }
+  if (message?.type === "TEAMS_LIVE_MESSAGE") {
+    const sender = String(message.sender || "Someone").trim();
+    const text = String(message.text || "").trim();
+    if (!text) return;
+    teamsDetectedCount += 1;
+    $("teamsReadCount").textContent = String(teamsDetectedCount);
+    addTeamsFeedItem(sender, text);
+    teamsSpeechQueue.push({ sender, text });
+    speakTeamsQueue();
+  }
+});
+
 async function loadConversation() {
   $("status").textContent = "Detecting messages in the open ChatGPT conversation…";
   $("load").disabled = true;
@@ -384,6 +737,8 @@ async function loadSettings() {
   if (settings.voiceChoice) $("voice").value = settings.voiceChoice;
 }
 
+$("teamsStart").addEventListener("click", startTeamsLiveReading);
+$("teamsStop").addEventListener("click", stopTeamsLiveReading);
 $("load").addEventListener("click", loadConversation);
 $("refresh").addEventListener("click", loadConversation);
 $("search").addEventListener("input", render);
@@ -453,4 +808,4 @@ if ("speechSynthesis" in window) {
   setStatus("This browser does not provide speech synthesis.");
 }
 loadSettings();
-loadConversation();
+initializeActiveTab();
