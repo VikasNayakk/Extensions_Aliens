@@ -108,10 +108,10 @@ async function addCurrentGroup() {
   const tab=await activeTeamsTab();
   let info;
   try {
-    info=await chrome.tabs.sendMessage(tab.id,{type:"TEAMS_GET_CHAT_INFO"});
+    info=await chrome.tabs.sendMessage(tab.id,{type:"TEAMS_GET_CHAT_INFO"},{frameId:0});
   } catch (_) {
     await chrome.scripting.executeScript({target:{tabId:tab.id},files:["teams-content.js"]});
-    info=await chrome.tabs.sendMessage(tab.id,{type:"TEAMS_GET_CHAT_INFO"});
+    info=await chrome.tabs.sendMessage(tab.id,{type:"TEAMS_GET_CHAT_INFO"},{frameId:0});
   }
   if(!info?.ok || !info.groupName || !info.groupKey) {
     throw new Error(info?.error || "Could not detect the current Teams group name. Open an individual group chat and retry.");
@@ -171,15 +171,14 @@ async function readLastFive(groupKey) {
   if(!group) throw new Error("This group is no longer selected.");
   const tabId=(group.tabIds||[]).find(id=>Number.isInteger(id));
   if(!tabId) throw new Error("No Teams tab is linked to this group. Re-add the group from its Teams tab.");
-  const [tab]=await chrome.tabs.query({}); 
   const allTabs=await chrome.tabs.query({});
   if(!allTabs.some(item=>item.id===tabId && teamsUrl(item.url))) throw new Error("The Teams tab for this group is closed. Open it again and re-add the group.");
   let result;
   try {
-    result=await chrome.tabs.sendMessage(tabId,{type:"TEAMS_READ_LAST_FIVE",groupKey});
+    result=await chrome.tabs.sendMessage(tabId,{type:"TEAMS_READ_LAST_FIVE",groupKey},{frameId:0});
   } catch (_) {
     await chrome.scripting.executeScript({target:{tabId},files:["teams-content.js"]});
-    result=await chrome.tabs.sendMessage(tabId,{type:"TEAMS_READ_LAST_FIVE",groupKey});
+    result=await chrome.tabs.sendMessage(tabId,{type:"TEAMS_READ_LAST_FIVE",groupKey},{frameId:0});
   }
   if(!result?.ok) throw new Error(result?.error||"Could not read the last five messages from this group.");
   const messages=(result.messages||[]).slice(-5);
