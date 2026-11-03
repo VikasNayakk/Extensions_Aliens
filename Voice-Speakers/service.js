@@ -279,46 +279,72 @@ function speakCurrentPhase() {
     : historyMessage
       ? historyMessage.sender+" ne kaha: "+historyMessage.text
       : current.sender+" ne kaha: "+current.text;
-  chrome.tts.speak(text,{
-    enqueue:false,
-    lang:"hi-IN",
-    rate:0.85,
-    onEvent:event=>{
-      if(!speechCurrent || speechCurrent.sequence!==current.sequence) return;
-      if(event.type==="end") {
-        if(current.phase==="group") {
-          current.phase="gap";
-          persistSpeechQueue().then(()=>{
-            if(groupDelayTimer) clearTimeout(groupDelayTimer);
-            const sequence=current.sequence;
-            groupDelayTimer=setTimeout(()=>{
-              groupDelayTimer=null;
-              if(speechCurrent?.sequence===sequence && speechCurrent.phase==="gap") {
-                speechCurrent.phase="message";
-                persistSpeechQueue().then(speakCurrentPhase);
-              }
-            },5000);
-          });
-          setStatus("Group "+current.groupName+" announced. Waiting 5 seconds before the message.");
+
+  const speakWithVoice = availableVoices => {
+    if(!speechCurrent || speechCurrent.sequence!==current.sequence) return;
+    const voices=Array.isArray(availableVoices)?availableVoices:[];
+    const voice=
+      voices.find(item=>/^hi[-_]IN$/i.test(item.lang||"")) ||
+      voices.find(item=>/^hi(?:[-_]|$)/i.test(item.lang||"")) ||
+      voices.find(item=>/^en[-_]IN$/i.test(item.lang||"")) ||
+      null;
+    const options={
+      enqueue:false,
+      rate:0.85,
+      desiredEventTypes:["start","end","error","interrupted","cancelled"],
+      onEvent:event=>{
+        if(!speechCurrent || speechCurrent.sequence!==current.sequence) return;
+        if(event.type==="start") {
+          setStatus("Speaking "+(current.groupName||"Teams group")+" · "+(current.phase==="group"?"group name":(historyMessage?.sender||current.sender)));
         } else if(event.type==="end") {
-          if(current.historyBatch && (current.messageIndex||0)+1<current.messages.length) {
+          if(current.phase==="group") {
+            current.phase="gap";
+            persistSpeechQueue().then(()=>{
+              if(groupDelayTimer) clearTimeout(groupDelayTimer);
+              const sequence=current.sequence;
+              groupDelayTimer=setTimeout(()=>{
+                groupDelayTimer=null;
+                if(speechCurrent?.sequence===sequence && speechCurrent.phase==="gap") {
+                  speechCurrent.phase="message";
+                  persistSpeechQueue().then(speakCurrentPhase);
+                }
+              },5000);
+            });
+            setStatus("Group "+current.groupName+" announced. Waiting 5 seconds before the message.");
+          } else if(current.historyBatch && (current.messageIndex||0)+1<current.messages.length) {
             current.messageIndex=(current.messageIndex||0)+1;
             persistSpeechQueue().then(speakCurrentPhase);
           } else {
             finishCurrentSpeech();
           }
+        } else if(["error","interrupted","cancelled"].includes(event.type)) {
+          if(event.type==="error") setStatus("Speech error: "+(event.errorMessage||"Chrome TTS could not read the message."));
+          finishCurrentSpeech();
         }
-      } else if(["error","interrupted","cancelled"].includes(event.type)) {
-        if(event.type==="error") chrome.storage.local.set({teamsLastStatus:"Speech error: "+(event.errorMessage||"TTS could not read the message.")});
+      }
+    };
+    if(voice?.voiceName) {
+      options.voiceName=voice.voiceName;
+      options.lang=voice.lang;
+    } else {
+      // Leave the voice unset if Hindi/India voices are not installed;
+      // Chrome then falls back to its default available speech engine.
+      setStatus("No Hindi voice is installed. Trying the default Chrome speech voice.");
+    }
+    chrome.tts.speak(text,options,()=>{
+      if(chrome.runtime.lastError) {
+        setStatus("Chrome TTS error: "+chrome.runtime.lastError.message);
         finishCurrentSpeech();
       }
-    }
-  },()=>{
-    if(chrome.runtime.lastError) {
-      chrome.storage.local.set({teamsLastStatus:"Speech error: "+chrome.runtime.lastError.message});
-      finishCurrentSpeech();
-    }
-  });
+    });
+  };
+
+  try {
+    chrome.tts.getVoices(voices=>speakWithVoice(voices));
+  } catch(error) {
+    setStatus("Could not load speech voices: "+error.message);
+    speakWithVoice([]);
+  }
 }
 
 async function finishCurrentSpeech() {
@@ -369,6 +395,7 @@ async function onTeamsMessage(message,sender) {
     [TEAMS_RECENT_EVENTS]:recent,
     teamsLastStatus:"New message in "+group.name+" from "+senderName+"."
   });
+  await setStatus("Detected a new message in selected group: "+group.name+" · "+senderName+". Queued for priority speech.");
   await enqueueSpeech([{
     ...entry,
     priority:groups.indexOf(group),
