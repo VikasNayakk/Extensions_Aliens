@@ -38,7 +38,7 @@ function renderGroups(groups){
     const row=document.createElement("div");row.className="group-row";
     const info=document.createElement("div");info.className="group-info";
     const title=document.createElement("strong");title.textContent=(index+1)+". "+group.name;
-    const detail=document.createElement("small");detail.textContent=Number.isInteger(group.monitorTabId)?"Independent background monitor ready":(group.monitorUrl?"Background monitor will be restored when ON":"Re-add this group once to set up its background monitor");
+    const detail=document.createElement("small");detail.textContent="Reads this group's Teams in-app notifications";
     info.append(title,detail);
     const controls=document.createElement("div");controls.className="group-controls";
     const up=document.createElement("button");up.type="button";up.textContent="↑";up.title="Higher priority";up.disabled=index===0;up.addEventListener("click",()=>moveGroup(index,-1));
