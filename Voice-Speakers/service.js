@@ -327,7 +327,13 @@ async function readLastFive(groupKey) {
   if(!Number.isInteger(tabId)) throw new Error("Open this Teams group and add it again before reading its history.");
   const result=await sendToMonitorTab(tabId,{type:"TEAMS_READ_LAST_FIVE_V16",groupKey});
   if(!result?.ok) throw new Error(result?.error||"Could not read the last five messages from the currently open group.");
-  const messages=(result.messages||[]).slice(-5);
+  const recentMessages=(result.messages||[]).slice(-5);
+  const messages=[];
+  for(const message of recentMessages){
+    const messageKey=group.key+"|"+String(message.key||"");
+    if(!message.key||await wasMessageProcessed(messageKey)) continue;
+    messages.push(message);
+  }
   if(!messages.length) {
     await setStatus("No readable incoming messages were found in "+group.name+".");
     return publishLiveState();
@@ -336,7 +342,7 @@ async function readLastFive(groupKey) {
     groupKey:group.key,groupName:group.name,
     messages:messages.map(message=>({
       sender:message.sender,text:message.text,messageId:message.key,
-      replyTo:message.replyTo||"",isReply:!!message.isReply,
+      replyTo:message.replyTo||"",replyToMessageId:message.replyToMessageId||"",isReply:!!message.isReply,
       audioRef:message.audioRef||"",audioUrl:message.audioUrl||"",
       sourceTabId:tabId
     })),
@@ -381,6 +387,7 @@ function normalizeSpeechBatch(item){
       text:String(message.text||""),
       messageId:String(message.messageId||message.key||""),
       replyTo:String(message.replyTo||""),
+      replyToMessageId:String(message.replyToMessageId||""),
       isReply:!!message.isReply,
       audioRef:String(message.audioRef||""),
       audioUrl:String(message.audioUrl||""),
@@ -682,7 +689,7 @@ async function onTeamsMessage(message,sender) {
     groupKey,groupName:group.name,
     messages:[{
       sender:senderName,text,messageId:entry.messageId,
-      replyTo:entry.replyTo,isReply:entry.isReply,
+      replyTo:entry.replyTo,replyToMessageId:entry.replyToMessageId,isReply:entry.isReply,
       audioRef,audioUrl,sourceTabId:tabId
     }],
     priority:groups.indexOf(group),
