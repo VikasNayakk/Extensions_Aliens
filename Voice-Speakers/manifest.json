@@ -1,12 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Voice Speakers — Aliens",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "A compact toolbar popup with persistent ON/OFF Microsoft Teams live message reading and ChatGPT reply reading.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
-    "sidePanel",
     "activeTab",
     "scripting",
     "tabs",
@@ -26,9 +25,6 @@
   "background": {
     "service_worker": "service.js",
     "type": "module"
-  },
-  "side_panel": {
-    "default_path": "sidepanel.html"
   },
   "options_page": "options.html",
   "content_scripts": [
