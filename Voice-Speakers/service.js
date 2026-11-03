@@ -18,7 +18,8 @@ async function getLiveState() {
     TEAMS_LIVE_KEY,
     "teamsReadCount",
     "teamsRecentEvents",
-    "teamsLastStatus"
+    "teamsLastStatus",
+    "teamsPopupTheme"
   ]);
   const tabs = await getTeamsTabs();
   return {
@@ -26,7 +27,8 @@ async function getLiveState() {
     teamsTabCount: tabs.length,
     teamsReadCount: saved.teamsReadCount || 0,
     teamsRecentEvents: saved.teamsRecentEvents || [],
-    teamsLastStatus: saved.teamsLastStatus || ""
+    teamsLastStatus: saved.teamsLastStatus || "",
+    teamsPopupTheme: saved.teamsPopupTheme || "light"
   };
 }
 
