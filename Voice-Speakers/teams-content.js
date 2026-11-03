@@ -344,12 +344,12 @@
   }
 
   chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
-    if(message?.type==="TEAMS_GET_CHAT_INFO"){
+    if(message?.type==="TEAMS_GET_CHAT_INFO_V16"){
       const info=chatInfo();
       sendResponse(info);
       return true;
     }
-    if(message?.type==="TEAMS_READ_LAST_FIVE"){
+    if(message?.type==="TEAMS_READ_LAST_FIVE_V16"){
       const info=chatInfo();
       if(!info.ok||info.groupKey!==message.groupKey){
         sendResponse({ok:false,error:"The current Teams tab is no longer on this selected group. Open the group and add it again."});
