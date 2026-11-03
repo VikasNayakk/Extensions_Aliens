@@ -527,14 +527,14 @@
         audio.muted=false;
         audio.volume=1;
         audio.currentTime=0;
-        audio.onended=()=>{
+        audio.addEventListener("ended",()=>{
           if(state.activeAudio===audio) state.activeAudio=null;
           chrome.runtime.sendMessage({type:"TEAMS_AUDIO_ENDED",playbackId:message.playbackId},()=>void chrome.runtime.lastError);
-        };
-        audio.onerror=()=>{
+        },{once:true});
+        audio.addEventListener("error",()=>{
           if(state.activeAudio===audio) state.activeAudio=null;
           chrome.runtime.sendMessage({type:"TEAMS_AUDIO_FAILED",playbackId:message.playbackId,error:"Teams audio playback failed."},()=>void chrome.runtime.lastError);
-        };
+        },{once:true});
         audio.play().then(()=>sendResponse({ok:true,started:true})).catch(error=>sendResponse({ok:false,error:error?.message||"Browser blocked audio playback."}));
       }catch(error){
         sendResponse({ok:false,error:error?.message||"Could not start audio playback."});
