@@ -22,11 +22,11 @@
         <div class="history-actions"><button id="historyYes" class="primary" type="button">Yes, read last 5</button><button id="historyNo" class="secondary" type="button">No, only new</button></div>
       </div>
       <div id="groups" class="groups"><div class="empty">No groups selected. Open a Teams group and add it here.</div></div>
-      <p class="hint">Priority: top group is read first when messages arrive together. For simultaneous monitoring, keep each selected group open in its own Teams browser tab.</p>
+      <p class="hint">Priority: top group is read first when alerts arrive together. Keep Teams open in at least one browser tab and enable message previews in Teams notifications. Selected groups are matched from Teams in-app notification cards.</p>
     </section>
 
     <section class="stats">
-      <div><strong id="tabCount">0</strong><small>Group monitors ready</small></div>
+      <div><strong id="tabCount">0</strong><small>Teams tabs monitored</small></div>
       <div><strong id="readCount">0</strong><small>New messages read</small></div>
       <div><strong id="queueCount">0</strong><small>Messages waiting</small></div>
     </section>
@@ -34,7 +34,7 @@
       <div class="section-title"><strong>Latest messages</strong><span id="activityState">Waiting</span></div>
       <div id="events" class="events"><div class="empty">No new messages yet.</div></div>
     </section>
-    <p class="foot">For every live message, the extension announces the group name first, waits 5 seconds, then reads the sender and message. OFF stops monitoring and clears the speech queue.</p>
+    <p class="foot">For each selected-group notification, the extension announces the group name first, waits 5 seconds, then reads the sender and message. OFF stops monitoring and clears the speech queue.</p>
   </main>
   <script src="popup.js"></script>
 </body></html>
