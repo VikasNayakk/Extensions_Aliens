@@ -59,7 +59,9 @@ function teamsMonitorControl(action) {
   function findItems(root) {
     if (!root) return [];
     const direct = Array.from(root.children || []).filter(node => node.querySelector(bodySelector));
-    if (direct.length) return direct;
+    const directHasOneMessageEach = direct.length > 1 &&
+      direct.every(node => node.querySelectorAll(bodySelector).length <= 1);
+    if (directHasOneMessageEach) return direct;
 
     const selectors = [
       '[data-tid="message-list-item"]',
@@ -107,7 +109,8 @@ function teamsMonitorControl(action) {
     return clean(value)
       .replace(/\b(password|passcode|passwd|pwd|otp|one[- ]time code|api[ _-]?key|access[ _-]?token|secret|2fa)\b\s*(?:is\s*)?[:=]?\s*([^\s,;]+)/gi, "$1 [hidden]")
       .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer [hidden]")
-      .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})\b/g, "[access token hidden]");
+      .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})\b/g, "[access token hidden]")
+      .replace(/\b(?=[A-Za-z0-9!@#$%^&*_-]{12,}\b)(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*_-])[A-Za-z0-9!@#$%^&*_-]+\b/g, "[possible password hidden]");
   }
 
   function readEntries(root) {
