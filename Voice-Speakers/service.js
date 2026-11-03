@@ -283,14 +283,16 @@ function speakCurrentPhase() {
   const speakWithVoice = availableVoices => {
     if(!speechCurrent || speechCurrent.sequence!==current.sequence) return;
     const voices=Array.isArray(availableVoices)?availableVoices:[];
+    const voicesWithEnd=voices.filter(item=>Array.isArray(item.eventTypes)&&item.eventTypes.includes("end"));
     const voice=
-      voices.find(item=>/^hi[-_]IN$/i.test(item.lang||"")) ||
-      voices.find(item=>/^hi(?:[-_]|$)/i.test(item.lang||"")) ||
-      voices.find(item=>/^en[-_]IN$/i.test(item.lang||"")) ||
+      voicesWithEnd.find(item=>/^hi[-_]IN$/i.test(item.lang||"")) ||
+      voicesWithEnd.find(item=>/^hi(?:[-_]|$)/i.test(item.lang||"")) ||
+      voicesWithEnd.find(item=>/^en[-_]IN$/i.test(item.lang||"")) ||
       null;
     const options={
       enqueue:false,
       rate:0.85,
+      requiredEventTypes:["end"],
       desiredEventTypes:["start","end","error","interrupted","cancelled"],
       onEvent:event=>{
         if(!speechCurrent || speechCurrent.sequence!==current.sequence) return;
