@@ -2,7 +2,7 @@
 
 Chrome Manifest V3 extension that reads ChatGPT replies aloud.
 
-Current Teams live reader release: **1.6.1**.
+Current Teams live reader release: **1.6.2**.
 
 ## Current workflow
 
@@ -17,6 +17,8 @@ Current Teams live reader release: **1.6.1**.
 8. Repeated message/card IDs are stored and ignored. Emoji and standalone date/time lines are removed. Reply quote blocks are excluded when Teams exposes them; a reply is spoken as the original sender's name followed by the replier and the reply text.
 9. Audio elements and direct audio-file links found inside a visible Teams message are played; speech waits until playback ends. The extension does not narrate the audio itself.
 10. Turn OFF to stop monitoring, speech, and extension-started audio playback.
+
+**Audio limitation:** Teams must expose an audio player element or a direct audio-file link in the visible message/notification DOM. A notification that only says an audio file was sent, without exposing its media source, cannot be played from another unopened chat in this browser-only mode.
 
 This browser-only mode watches Teams in-app notification cards in an open Teams tab and matches each notification's group name against your selected groups. It does not use Microsoft Graph, Entra app registration, Power Automate, or separate hidden monitor tabs. Keep at least one Teams web tab open. In Teams, enable message previews in notifications and make sure chat notifications are shown as banners. Existing notification cards are ignored when monitoring first starts; new cards are processed after that. If Teams does not create an in-app notification card for a chat, the extension cannot read that message in this mode. The one-time last-five option reads from the currently open chat when you add it.
 
