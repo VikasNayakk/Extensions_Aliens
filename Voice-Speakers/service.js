@@ -10,7 +10,7 @@ const TEAMS_LIVE_KEY = "teamsLiveEnabled";
 const TEAMS_GROUPS_KEY = "teamsSelectedGroups";
 const TEAMS_READ_COUNT = "teamsReadCount";
 const TEAMS_RECENT_EVENTS = "teamsRecentEvents";
-const recentMessageIds = new Set();
+const recentMessageIds = new Map();
 let speechQueue = [];
 let speechCurrent = null;
 let speechQueueLoaded = false;
@@ -519,10 +519,14 @@ async function onTeamsMessage(message,sender) {
     return;
   }
   const uniqueId=groupKey+"|"+senderName+"|"+text.toLocaleLowerCase();
-  if(recentMessageIds.has(uniqueId)) return;
-  recentMessageIds.add(uniqueId);
-  if(messageId) recentMessageIds.add(groupKey+"|"+messageId);
-  if(recentMessageIds.size>5000) recentMessageIds.clear();
+  const now=Date.now(),last=recentMessageIds.get(uniqueId)||0;
+  if(now-last<6000) return;
+  recentMessageIds.set(uniqueId,now);
+  if(messageId) recentMessageIds.set(groupKey+"|"+messageId,now);
+  if(recentMessageIds.size>5000) {
+    for(const [key,time] of recentMessageIds) if(now-time>120000) recentMessageIds.delete(key);
+    if(recentMessageIds.size>5000) recentMessageIds.clear();
+  }
 
   const entry={groupName:group.name,groupKey,sender:senderName,text,receivedAt:Date.now()};
   const saved=await chrome.storage.local.get([TEAMS_READ_COUNT,TEAMS_RECENT_EVENTS]);
