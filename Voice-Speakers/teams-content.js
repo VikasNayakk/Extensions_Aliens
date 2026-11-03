@@ -139,8 +139,12 @@
   function currentUserName() {
     for (const node of document.querySelectorAll("[data-tid], [role='treeitem'], [role='listitem']")) {
       if (!visible(node)) continue;
-      const match = clean(node.innerText || node.textContent).match(/^(.{2,80}?)\s*\(You\)$/i);
-      if (match) return clean(match[1]);
+      const lines = String(node.innerText || node.textContent || "")
+        .split(/\\r?\\n/)
+        .map(clean)
+        .filter(Boolean);
+      const ownLine = lines.find(line => /^.{2,80}?\\s*\\(You\\)$/i.test(line));
+      if (ownLine) return clean(ownLine.replace(/\\s*\\(You\\)$/i, ""));
     }
     return "";
   }
