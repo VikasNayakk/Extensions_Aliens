@@ -11,7 +11,7 @@
     try{chrome.runtime.sendMessage({type,...payload},()=>void chrome.runtime.lastError);}catch(_){}
   };
   const clean=value=>String(value||"").replace(/\u200b/g,"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim();
-  const normalize=value=>clean(value).toLocaleLowerCase();
+  const normalize=value=>clean(value).normalize("NFKC").toLocaleLowerCase();
   const visible=node=>!!node&&node.getClientRects().length>0;
 
   const rootSelectors=[
