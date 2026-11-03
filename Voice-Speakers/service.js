@@ -335,14 +335,25 @@ async function onTeamsMessage(message,sender) {
   const groupKey=String(message.groupKey||"");
   const groups=await getStoredGroups();
   const group=groups.find(item=>item.key===groupKey);
-  if(!group) return;
+  if(!group) {
+    await setStatus("Ignored Teams message: this chat is not in Selected groups (received group key: "+groupKey+").");
+    return;
+  }
   const tabId=sender?.tab?.id;
-  if(!Number.isInteger(tabId) || !(group.tabIds||[]).includes(tabId)) return;
+  if(!Number.isInteger(tabId) || !teamsUrl(sender?.url || "")) {
+    await setStatus("Message received from an unknown tab; cannot safely route it to speech.");
+    return;
+  }
 
+  // Match selected groups by normalized chat identity, not the tab ID used when they were added.
+  // This allows the same selected group to be read when it is open in another Teams tab.
   const senderName=String(message.sender||"").trim();
   const text=String(message.text||"").trim();
   const messageId=String(message.messageId||"");
-  if(!senderName || !text) return;
+  if(!senderName || !text) {
+    await setStatus("Ignored Teams message: sender or message text was empty.");
+    return;
+  }
   const uniqueId=tabId+"|"+groupKey+"|"+messageId;
   if(messageId && recentMessageIds.has(uniqueId)) return;
   if(messageId) {
