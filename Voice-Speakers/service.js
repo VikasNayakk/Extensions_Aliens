@@ -432,7 +432,7 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
     readLastFive(message.groupKey).then(sendResponse).catch(error=>sendResponse({error:error.message}));
     return true;
   }
-  if(message?.type==="TEAMS_LIVE_MESSAGE") onTeamsMessage(message,sender).catch(()=>{});
+  if(message?.type==="TEAMS_LIVE_MESSAGE") onTeamsMessage(message,sender).catch(error=>setStatus("Teams message pipeline error: "+error.message));
   if(message?.type==="TEAMS_LIVE_STATUS") {
     const text=String(message.text||"");
     chrome.storage.local.set({teamsLastStatus:text});
