@@ -9,7 +9,7 @@ Chrome Manifest V3 extension that reads ChatGPT replies aloud.
 2. Click **Add currently open Teams group**. The group name is detected from the Teams tab.
 3. When asked, choose **Yes, read last 5** or **No, only new**.
 4. Add other groups from their own Teams tabs. Keep one Teams tab open per selected group so each group's live message list stays rendered.
-5. Move groups up or down to set priority. The group at the top gets first place when multiple messages are waiting.
+5. Move groups up or down to set priority. The group at the top gets first place when multiple messages are waiting. A short one-second collection window lets messages arriving together be sorted before speech starts.
 6. Turn **Live message reading** ON. Existing messages are skipped unless you explicitly choose to read the last five.
 7. A live message is announced as: group name, then a five-second pause, then sender name and message. Messages are queued one by one by group priority.
 8. Turn OFF to stop monitoring and clear queued speech.
