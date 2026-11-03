@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Voice Speakers — Aliens",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "Priority-based Microsoft Teams group monitor with last-five history reading and live announcements.",
   "minimum_chrome_version": "116",
   "permissions": [
