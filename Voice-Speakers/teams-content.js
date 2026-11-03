@@ -403,6 +403,7 @@
         sender:parsed.sender,
         text:parsed.text,
         timestamp:now,
+        messageTimestamp:parsed.timeLabel||"",
         messageId:"teams-toast:"+key,
         audioRef:parsed.audioRef||"",
         audioUrl:parsed.audioUrl||""
@@ -489,6 +490,7 @@
           sender:message.sender,
           text:message.text,
           timestamp:message.timestamp,
+          messageTimestamp:message.timestamp||"",
           messageId:message.key,
           replyTo:message.replyTo||"",
           replyToMessageId:message.replyToMessageId||"",
