@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY="__aliensVoiceSpeakersTeamsContentV15";
+  const STATE_KEY="__aliensVoiceSpeakersTeamsContentV16";
   if(window[STATE_KEY]) return;
 
   const state=window[STATE_KEY]={
@@ -82,6 +82,42 @@
       }
     }
     return "";
+  }
+  function conversationChatId(){
+    const selectors=[
+      'a[href*="/l/message/"]',
+      'a[href*="/l/chat/"]'
+    ];
+    for(const selector of selectors){
+      for(const link of document.querySelectorAll(selector)){
+        const raw=link.getAttribute("href")||link.href||"";
+        if(!raw) continue;
+        try{
+          const url=new URL(raw,location.origin);
+          let match=url.pathname.match(/\/l\/message\/([^/]+)/i);
+          if(!match) match=url.pathname.match(/\/l\/chat\/([^/]+)/i);
+          if(match){
+            const id=decodeURIComponent(match[1]);
+            if(/^19:/i.test(id)) return id;
+          }
+        }catch(_){}
+      }
+    }
+
+    const attributeSelectors=["[data-conversation-id]","[data-chat-id]","[data-thread-id]"];
+    for(const selector of attributeSelectors){
+      for(const node of document.querySelectorAll(selector)){
+        for(const attribute of ["data-conversation-id","data-chat-id","data-thread-id"]){
+          const value=node.getAttribute(attribute)||"";
+          if(/^19:/i.test(value.trim())) return value.trim();
+        }
+      }
+    }
+    return "";
+  }
+  function monitorUrl(chatId){
+    if(!chatId) return "";
+    return "https://teams.microsoft.com/l/chat/"+encodeURIComponent(chatId)+"/conversations";
   }
   function groupKey(){return normalize(groupName());}
 
@@ -192,10 +228,27 @@
     return {messages,itemCount:items.length};
   }
   function chatInfo(){
-    const name=groupName(),key=normalize(name);
+    const name=groupName(),key=normalize(name),chatId=conversationChatId();
     const root=findRoot();
     const data=root?extract(root.node):{messages:[],itemCount:0};
-    return {ok:!!name&&!!root,groupName:name,groupKey:key,baselineCount:data.messages.length,itemCount:data.itemCount,error:!name?"Teams group name could not be detected.":!root?"Open the group chat so its messages are visible.":""};
+    const url=monitorUrl(chatId);
+    const error=!name
+      ?"Teams group name could not be detected."
+      :!root
+        ?"Open the group chat so its messages are visible."
+        :!chatId
+          ?"Teams chat ID could not be read from message links. Open a message's More options > Copy link once, then retry."
+          :"";
+    return {
+      ok:!!name&&!!root&&!!chatId,
+      groupName:name,
+      groupKey:key,
+      chatId,
+      monitorUrl:url,
+      baselineCount:data.messages.length,
+      itemCount:data.itemCount,
+      error
+    };
   }
   function stop(){
     state.running=false;
