@@ -4,25 +4,37 @@
 <body>
   <header class="top">
     <div class="brand"><div class="mark">VS</div><div><strong>Voice Speakers</strong><small>ALIENS · TEAMS LIVE READER</small></div></div>
-    <div class="top-actions"><button id="theme" class="theme-button" type="button" aria-label="Switch to dark mode">Dark</button><span id="statusPill" class="pill off">OFF</span></div>
+    <div class="top-actions"><button id="theme" class="theme-button" type="button" aria-label="Switch theme">Dark</button><span id="statusPill" class="pill off">OFF</span></div>
   </header>
   <main>
     <section class="control-card">
-      <div><strong>Live message reading</strong><small>Monitor all open Microsoft Teams chats</small></div>
+      <div><strong>Live message reading</strong><small>Monitor only the groups you select</small></div>
       <button id="power" class="switch off" type="button" aria-pressed="false" aria-label="Turn Teams live reading on"><span></span></button>
     </section>
     <p id="status" class="status" aria-live="polite">Checking status…</p>
+
+    <section class="group-section">
+      <div class="section-title"><strong>Selected groups</strong><span id="groupCount">0 groups</span></div>
+      <button id="addGroup" class="add-button" type="button">＋ Add currently open Teams group</button>
+      <div id="historyPrompt" class="history-prompt" hidden>
+        <strong id="historyTitle">Read last 5 messages?</strong>
+        <p>Should I read this group's last five messages now? New messages will be monitored either way.</p>
+        <div class="history-actions"><button id="historyYes" class="primary" type="button">Yes, read last 5</button><button id="historyNo" class="secondary" type="button">No, only new</button></div>
+      </div>
+      <div id="groups" class="groups"><div class="empty">No groups selected. Open a Teams group and add it here.</div></div>
+      <p class="hint">Priority: top group is read first when messages arrive together. For simultaneous monitoring, keep each selected group open in its own Teams browser tab.</p>
+    </section>
+
     <section class="stats">
       <div><strong id="tabCount">0</strong><small>Teams tabs open</small></div>
       <div><strong id="readCount">0</strong><small>New messages read</small></div>
+      <div><strong id="queueCount">0</strong><small>Messages waiting</small></div>
     </section>
     <section class="activity">
       <div class="section-title"><strong>Latest messages</strong><span id="activityState">Waiting</span></div>
       <div id="events" class="events"><div class="empty">No new messages yet.</div></div>
     </section>
-    <p class="foot">ON hone par Teams background tabs mein bhi chalta rahega. Doosre browser tab par switch karne se reading band nahi hogi. Teams chat badalne par us chat ki existing history skip hogi aur naye messages read honge.</p>
-    <button id="settings" class="link-button" type="button">Extension settings</button>
+    <p class="foot">For every live message, the extension announces the group name first, waits 5 seconds, then reads the sender and message. OFF stops monitoring and clears the speech queue.</p>
   </main>
   <script src="popup.js"></script>
-</body>
-</html>
+</body></html>
