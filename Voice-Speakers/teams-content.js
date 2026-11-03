@@ -269,6 +269,7 @@
         if(state.seen.has(message.key)) return;
         state.seen.add(message.key);
         if(message.own) return;
+        send("TEAMS_LIVE_STATUS",{running:true,text:"Detected new message in selected group: "+groupName()+" · "+message.sender+"."});
         send("TEAMS_LIVE_MESSAGE",{
           groupName:groupName(),
           groupKey:groupKey(),
