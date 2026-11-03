@@ -1,15 +1,28 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Voice Speakers</title><link rel="stylesheet" href="styles.css"></head>
-<body class="popup">
-  <header class="top"><div class="brand-mark">VS</div><div><strong>Voice Speakers</strong><small>ALIENS · TEAM CHAT ASSISTANT</small></div><button id="settings" class="icon-btn" title="Settings">⚙</button></header>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Voice Speakers</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header class="top">
+    <div class="brand"><div class="mark">VS</div><div><strong>Voice Speakers</strong><small>ALIENS · TEAMS LIVE READER</small></div></div>
+    <span id="statusPill" class="pill off">OFF</span>
+  </header>
   <main>
-    <label for="chatText">Paste copied Teams messages</label>
-    <textarea id="chatText" placeholder="Paste the conversation here…"></textarea>
-    <div class="row"><button id="readClipboard" class="secondary">Paste clipboard</button><button id="analyze" class="primary">Analyze messages</button></div>
-    <p id="status" class="status" aria-live="polite">Messages are processed only after you submit them.</p>
-    <section id="resultWrap" hidden><div class="result-head"><strong>Spoken output</strong><button id="copy" class="text-btn">Copy</button></div><pre id="result"></pre><div class="row"><button id="speak" class="primary">Speak</button><button id="stop" class="secondary">Stop</button></div></section>
+    <section class="control-card">
+      <div><strong>Live message reading</strong><small>Monitor all open Microsoft Teams chats</small></div>
+      <button id="power" class="switch off" type="button" aria-pressed="false" aria-label="Turn Teams live reading on"><span></span></button>
+    </section>
+    <p id="status" class="status" aria-live="polite">Checking status…</p>
+    <section class="stats">
+      <div><strong id="tabCount">0</strong><small>Teams tabs monitored</small></div>
+      <div><strong id="readCount">0</strong><small>New messages read</small></div>
+    </section>
+    <section class="activity">
+      <div class="section-title"><strong>Latest messages</strong><span id="activityState">Waiting</span></div>
+      <div id="events" class="events"><div class="empty">No new messages yet.</div></div>
+    </section>
+    <p class="foot">ON hone par Teams background tabs mein bhi chalta rahega. Doosre browser tab par switch karne se reading band nahi hogi. Teams chat badalne par us chat ki existing history skip hogi aur naye messages read honge.</p>
+    <button id="settings" class="link-button" type="button">Extension settings</button>
   </main>
-  <footer><button id="openPanel" class="text-btn">Open side panel</button><span>Local-first · Credentials redacted</span></footer>
   <script src="popup.js"></script>
-</body></html>
+</body>
+</html>
