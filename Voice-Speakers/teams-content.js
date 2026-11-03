@@ -225,6 +225,7 @@
       '[data-tid*="message-reply" i]',
       '[data-tid*="reply-preview" i]',
       '[data-testid*="quoted-message" i]',
+      '[data-tid*="quoted" i]',
       '[aria-label*="replying to" i]',
       '[aria-label*="quoted message" i]'
     ];
@@ -237,10 +238,21 @@
       const authorNode=node.querySelector('[data-tid*="author" i],[data-testid*="author" i],[class*="author" i],strong,b');
       const author=clean(authorNode?.innerText||authorNode?.textContent||labelMatch?.[1]||"");
       if(author){
-        return {replyTo:author.replace(/^(?:replying to|reply to|quoted message from)\s*[:\-]?\s*/i,"").split(/\r?\n/)[0],nodes:unique};
+        const quotedNode=node.querySelector("[data-message-id],[data-mid]")||node;
+        const quotedId=quotedNode.getAttribute("data-message-id")||quotedNode.getAttribute("data-mid")||"";
+        return {
+          replyTo:author.replace(/^(?:replying to|reply to|quoted message from)\s*[:\-]?\s*/i,"").split(/\r?\n/)[0],
+          replyToMessageId:quotedId,
+          nodes:unique
+        };
       }
     }
-    return {replyTo:"",nodes:unique};
+    const quotedNode=unique.find(node=>node.hasAttribute("data-message-id")||node.hasAttribute("data-mid"));
+    return {
+      replyTo:"",
+      replyToMessageId:quotedNode?(quotedNode.getAttribute("data-message-id")||quotedNode.getAttribute("data-mid")||""):"",
+      nodes:unique
+    };
   }
   function audioAttachment(item,body,messageKey){
     const audio=item.querySelector("audio")||body.querySelector("audio");
@@ -295,6 +307,7 @@
           key,sender,text:redact(raw),timestamp:stamp,
           own:isOwn(item,body,sender,me),index:messages.length,
           replyTo:reply.replyTo||"",
+          replyToMessageId:reply.replyToMessageId||"",
           isReply:reply.nodes.length>0,
           ...(media||{})
         });
@@ -460,7 +473,12 @@
       }
 
       const appended=batch.messages.slice(anchorIndex+1);
+      const quotedOriginalIds=new Set(appended.map(message=>message.replyToMessageId).filter(Boolean));
       appended.forEach(message=>{
+        if(quotedOriginalIds.has(message.key)){
+          state.seen.add(message.key);
+          return;
+        }
         if(state.seen.has(message.key)) return;
         state.seen.add(message.key);
         if(message.own) return;
@@ -473,6 +491,7 @@
           timestamp:message.timestamp,
           messageId:message.key,
           replyTo:message.replyTo||"",
+          replyToMessageId:message.replyToMessageId||"",
           isReply:!!message.isReply,
           audioRef:message.audioRef||"",
           audioUrl:message.audioUrl||""
@@ -547,7 +566,9 @@
         return true;
       }
       const batch=extract(root.node);
-      const messages=batch.messages.filter(message=>!message.own).slice(-5);
+      let messages=batch.messages.filter(message=>!message.own);
+      const quotedOriginalIds=new Set(messages.map(message=>message.replyToMessageId).filter(Boolean));
+      messages=messages.filter(message=>!quotedOriginalIds.has(message.key)).slice(-5);
       sendResponse({ok:true,groupName:name,messages});
       return true;
     }
