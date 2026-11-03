@@ -9,6 +9,7 @@ function setStatus(message) {
 }
 
 let teamsMonitorTabId = null;
+let teamsMonitorFrameId = null;
 let teamsDetectedCount = 0;
 let teamsSpeechQueue = [];
 let teamsSpeechActive = false;
@@ -43,54 +44,126 @@ function teamsMonitorControl(action) {
   }
 
   const rootSelectors = [
-    "#chat-pane-list",
-    '[data-tid="chat-pane-message-list"]',
     '[data-tid="thread-body-scrollable-content"]',
+    '[data-tid="message-pane-body"]',
+    '[data-tid="chat-pane-message-list"]',
     '[data-tid="scrollable-thread-body"]',
     'div[role="log"][aria-label*="messages" i]',
     'div[role="list"][aria-label*="messages" i]',
-    '[data-tid="message-pane"]'
+    '[data-tid="thread-view"]',
+    '[data-tid="message-pane"]',
+    "#chat-pane-list"
   ];
-  const bodySelector = '[id^="message-body-"]';
-  const authorSelector = '[data-tid="message-author-name"]';
-  const findRoot = () => rootSelectors.map(selector => document.querySelector(selector)).find(Boolean) || null;
+  const messageSelectors = [
+    '[id^="message-body-"]',
+    '[data-tid="message-content"]',
+    '[data-tid="message-body"]',
+    '[data-tid="bubble-text"]',
+    '[data-tid^="message-content-"]',
+    '[data-tid^="messageBody"]',
+    ".ts-message-content",
+    ".message-body",
+    ".ui-chat__messagecontent",
+    '[role="document"]'
+  ];
+  const itemSelectors = [
+    '[data-tid="message-group-container"]',
+    '[data-tid="message-list-item"]',
+    'div[role="listitem"]',
+    'div[data-tid^="message-"]'
+  ];
+  const authorSelectors = [
+    '[data-tid="message-author-name"]',
+    '[data-tid="author-name"]',
+    '[id^="message-author-"]',
+    'span[data-tid="message-group-author"]',
+    '[data-tid="message-group-header"]'
+  ];
+  const timestampSelectors = [
+    '[id^="timestamp-"]',
+    '[data-tid="message-time"]',
+    '[data-tid="message-group-time"]',
+    '[data-tid="message-timestamp"]',
+    "time[datetime]",
+    "time"
+  ];
   const clean = value => String(value || "").replace(/\u200b/g, "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  const visible = element => !!element && element.getClientRects().length > 0;
+  const findRootMatch = () => {
+    for (const selector of rootSelectors) {
+      const root = document.querySelector(selector);
+      if (root && visible(root)) return { root, selector };
+    }
+    return { root: null, selector: "" };
+  };
+  const findRoot = () => findRootMatch().root;
+
+  function findMessageNodes(container) {
+    if (!container) return [];
+    for (const selector of messageSelectors) {
+      const nodes = [];
+      if (container.matches?.(selector) && visible(container)) nodes.push(container);
+      nodes.push(...Array.from(container.querySelectorAll(selector)).filter(visible));
+      if (nodes.length) {
+        return nodes.filter((node, index) =>
+          !nodes.some((other, otherIndex) => otherIndex !== index && other.contains(node))
+        );
+      }
+    }
+    return [];
+  }
 
   function findItems(root) {
     if (!root) return [];
-    const direct = Array.from(root.children || []).filter(node => node.querySelector(bodySelector));
-    const directHasOneMessageEach = direct.length > 1 &&
-      direct.every(node => node.querySelectorAll(bodySelector).length <= 1);
-    if (directHasOneMessageEach) return direct;
-
-    const selectors = [
-      '[data-tid="message-list-item"]',
-      '[data-tid="message-group-container"]',
-      'div[role="listitem"]'
-    ];
-    for (const selector of selectors) {
-      const items = Array.from(root.querySelectorAll(selector)).filter(node => node.querySelector(bodySelector));
-      if (items.length) return items.filter(node => !items.some(other => other !== node && other.contains(node)));
+    for (const selector of itemSelectors) {
+      const candidates = Array.from(root.querySelectorAll(selector))
+        .filter(node => visible(node) && findMessageNodes(node).length > 0);
+      if (candidates.length) {
+        return candidates.filter(node =>
+          !candidates.some(other => other !== node && other.contains(node))
+        );
+      }
     }
 
-    return Array.from(root.querySelectorAll(bodySelector)).map(body =>
-      body.closest('[data-tid="message-list-item"], [data-tid="message-group-container"], div[role="listitem"]') || body.parentElement
+    const direct = Array.from(root.children || [])
+      .filter(node => visible(node) && findMessageNodes(node).length > 0);
+    if (direct.length) return direct;
+
+    return findMessageNodes(root).map(body =>
+      body.closest(itemSelectors.join(",")) || body.parentElement
     ).filter((node, index, all) => node && all.indexOf(node) === index);
   }
 
-  function closestAuthor(item) {
-    let node = item;
-    for (let depth = 0; node && depth < 5; depth++, node = node.parentElement) {
-      const author = node.querySelector(authorSelector);
-      if (author && clean(author.innerText || author.textContent)) return clean(author.innerText || author.textContent);
+  function findMetadata(startNode, selectors) {
+    let node = startNode;
+    for (let depth = 0; node && depth < 6; depth++, node = node.parentElement) {
+      for (const selector of selectors) {
+        const found = node.matches?.(selector) ? node : node.querySelector(selector);
+        if (!found) continue;
+        const value = clean(found.getAttribute("aria-label") || found.getAttribute("title") || found.innerText || found.textContent);
+        if (value) return value;
+      }
     }
     return "";
   }
 
-  function isOutgoing(item, author) {
+  function currentUserName() {
+    const candidates = Array.from(document.querySelectorAll("[data-tid], [role='treeitem'], [role='listitem']"));
+    for (const node of candidates) {
+      if (!visible(node)) continue;
+      const text = clean(node.innerText || node.textContent);
+      const match = text.match(/^(.{2,80}?)\s*\(You\)$/i);
+      if (match) return clean(match[1]);
+    }
+    return "";
+  }
+  const selfDisplayName = currentUserName();
+
+  function isOutgoing(item, body, author) {
     if (/^(you|me)$/i.test(author)) return true;
-    let node = item;
-    for (let depth = 0; node && depth < 7; depth++, node = node.parentElement) {
+    if (selfDisplayName && author.toLowerCase() === selfDisplayName.toLowerCase()) return true;
+    let node = body || item;
+    for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
       const classes = typeof node.className === "string" ? node.className : "";
       const markers = [
         classes,
@@ -98,9 +171,11 @@ function teamsMonitorControl(action) {
         node.getAttribute("data-testid"),
         node.getAttribute("data-message-direction"),
         node.getAttribute("data-is-own-message"),
-        node.getAttribute("aria-label")
+        node.getAttribute("aria-label"),
+        node.getAttribute("data-message-author")
       ].filter(Boolean).join(" ").toLowerCase();
       if (/outgoing|message-out|own-message|self-message|sent-by-me|from-me|data-is-own-message true|you sent|you said/.test(markers)) return true;
+      if (node === item) break;
     }
     return false;
   }
@@ -118,28 +193,36 @@ function teamsMonitorControl(action) {
     const entries = [];
     let lastAuthor = "";
     items.forEach((item, itemIndex) => {
-      const bodies = Array.from(item.matches?.(bodySelector) ? [item] : item.querySelectorAll(bodySelector));
-      const author = closestAuthor(item) || lastAuthor;
-      if (author) lastAuthor = author;
+      const bodies = findMessageNodes(item);
       bodies.forEach(body => {
-        const timeNode = item.querySelector('[id^="timestamp-"]') || item.querySelector("time[datetime]");
-        const content = body.querySelector('[id^="content-"]') || body;
+        const author = findMetadata(body, authorSelectors) || findMetadata(item, authorSelectors) || lastAuthor;
+        if (author) lastAuthor = author;
+
+        let content = body;
+        const nestedContent = body.querySelector('[id^="content-"]');
+        if (nestedContent) content = nestedContent;
         const clone = content.cloneNode(true);
-        clone.querySelectorAll("button,[role='button'],svg,script,style,[aria-hidden='true'],[data-tid*='reaction'],[data-testid*='reaction']").forEach(node => node.remove());
+        clone.querySelectorAll(
+          "button,[role='button'],svg,script,style,nav,[aria-hidden='true'],[data-tid*='reaction'],[data-testid*='reaction']"
+        ).forEach(node => node.remove());
+
         const rawText = clean(clone.innerText || clone.textContent);
         const text = redactSensitive(rawText);
         if (!text || !author) return;
-        const timestamp = timeNode
-          ? clean(timeNode.getAttribute("datetime") || timeNode.innerText || timeNode.textContent)
-          : "";
-        const id = body.id || "";
-        const key = id || [author, timestamp, rawText].join("|");
+
+        const timestamp = findMetadata(body, timestampSelectors) || findMetadata(item, timestampSelectors);
+        const messageId = body.id ||
+          body.getAttribute("data-message-id") ||
+          item.getAttribute("data-message-id") ||
+          "";
+        const key = messageId || [author, timestamp, rawText].join("|");
+
         entries.push({
           key,
-          sender: author,
+          sender: author.replace(/^Message by\s+/i, "").replace(/\s+by\s+.+$/i, ""),
           text,
           timestamp,
-          outgoing: isOutgoing(item, author),
+          outgoing: isOutgoing(item, body, author),
           itemIndex
         });
       });
@@ -155,10 +238,17 @@ function teamsMonitorControl(action) {
     return location.pathname + "|" + (title || (root && (root.getAttribute("data-tid") || root.id)) || "teams-chat");
   }
 
-  const root = findRoot();
-  if (!root) return { ok: false, error: "Teams is open, but I couldn't find the chat message list. Open an individual chat and try again." };
+  const rootMatch = findRootMatch();
+  const root = rootMatch.root;
+  if (!root) return { ok: false, error: "Teams chat message area not found in this frame. Checked: " + rootSelectors.join(", ") };
+  const initialItems = findItems(root);
   const initialEntries = readEntries(root);
-  if (!initialEntries.length) return { ok: false, error: "I found the Teams chat area, but no message items. Open a chat with messages and try again." };
+  if (!initialEntries.length) {
+    return {
+      ok: false,
+      error: "Teams message pane found (" + rootMatch.selector + "), but no readable message records. Message wrappers: " + initialItems.length + ". Try opening the chat and scrolling until messages are visible."
+    };
+  }
 
   const state = {
     running: true,
@@ -221,7 +311,14 @@ function teamsMonitorControl(action) {
     running: true,
     text: "Live reading is on. Listening for new incoming messages in this chat; existing messages were skipped."
   });
-  return { ok: true, baselineCount: initialEntries.length };
+  return {
+    ok: true,
+    baselineCount: initialEntries.length,
+    messageWrappers: initialItems.length,
+    rootSelector: rootMatch.selector,
+    frameUrl: location.href,
+    selfNameDetected: !!selfDisplayName
+  };
 }
 
 function addTeamsFeedItem(sender, message) {
@@ -297,16 +394,25 @@ async function startTeamsLiveReading() {
   $("teamsStatus").textContent = "Connecting to the open Teams chat…";
   try {
     const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
+      target: { tabId: tab.id, allFrames: true },
       func: teamsMonitorControl,
       args: ["start"]
     });
-    const result = results && results[0] && results[0].result;
-    if (!result || !result.ok) throw new Error(result?.error || "Could not start the Teams monitor.");
+    const successfulFrame = (results || []).find(entry => entry.result && entry.result.ok);
+    if (!successfulFrame) {
+      const errors = (results || []).map(entry => entry.result && entry.result.error).filter(Boolean);
+      throw new Error(errors[0] || "No Teams frame contained a readable chat. Open a chat and try again.");
+    }
+    const result = successfulFrame.result;
     teamsMonitorTabId = tab.id;
-    await chrome.storage.local.set({ teamsMonitorTabId });
+    teamsMonitorFrameId = successfulFrame.frameId;
+    await chrome.storage.local.set({ teamsMonitorTabId, teamsMonitorFrameId });
     $("teamsStop").disabled = false;
-    $("teamsStatus").textContent = "Live reading is on. New incoming messages will be announced with the sender's name.";
+    $("teamsStatus").textContent =
+      "Listening for new incoming messages. Baseline skipped: " + result.baselineCount +
+      " messages; wrapper count: " + result.messageWrappers +
+      "; frame: " + result.frameId + "; source: " + result.rootSelector +
+      (result.selfNameDetected ? "; own messages filtered." : "; Teams did not expose the signed-in name, so verify your own messages are not announced.");
   } catch (error) {
     $("teamsStatus").textContent = error?.message || "Could not start live reading.";
   } finally {
@@ -317,10 +423,16 @@ async function startTeamsLiveReading() {
 async function stopTeamsLiveReading() {
   try {
     const tabId = teamsMonitorTabId || (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]?.id;
-    if (tabId) await chrome.scripting.executeScript({ target: { tabId }, func: teamsMonitorControl, args: ["stop"] });
+    if (tabId) {
+      const target = Number.isInteger(teamsMonitorFrameId)
+        ? { tabId, frameIds: [teamsMonitorFrameId] }
+        : { tabId, allFrames: true };
+      await chrome.scripting.executeScript({ target, func: teamsMonitorControl, args: ["stop"] });
+    }
   } catch (_) {}
   teamsMonitorTabId = null;
-  await chrome.storage.local.remove("teamsMonitorTabId");
+  teamsMonitorFrameId = null;
+  await chrome.storage.local.remove(["teamsMonitorTabId", "teamsMonitorFrameId"]);
   teamsSpeechQueue = [];
   teamsSpeechActive = false;
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -330,8 +442,9 @@ async function stopTeamsLiveReading() {
 }
 
 async function initializeActiveTab() {
-  const settings = await chrome.storage.local.get(["teamsMonitorTabId"]);
+  const settings = await chrome.storage.local.get(["teamsMonitorTabId", "teamsMonitorFrameId"]);
   teamsMonitorTabId = settings.teamsMonitorTabId || null;
+  teamsMonitorFrameId = Number.isInteger(settings.teamsMonitorFrameId) ? settings.teamsMonitorFrameId : null;
   if (teamsMonitorTabId) {
     $("teamsStop").disabled = false;
     $("teamsStatus").textContent = "A Teams monitor may still be running. Keep this panel open to hear new messages.";
