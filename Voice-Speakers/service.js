@@ -342,7 +342,7 @@ async function readLastFive(groupKey) {
     groupKey:group.key,groupName:group.name,
     messages:messages.map(message=>({
       sender:message.sender,text:message.text,messageId:message.key,
-      replyTo:message.replyTo||"",replyToMessageId:message.replyToMessageId||"",isReply:!!message.isReply,
+      replyTo:message.replyTo||"",replyToMessageId:message.replyToMessageId||"",messageTimestamp:message.timestamp||"",isReply:!!message.isReply,
       audioRef:message.audioRef||"",audioUrl:message.audioUrl||"",
       sourceTabId:tabId
     })),
@@ -657,7 +657,7 @@ async function onTeamsMessage(message,sender) {
   const stableKey=groupKey+"|"+(messageId||[senderName,text,audioRef,audioUrl,message.timestamp||""].join("|"));
   if(await wasMessageProcessed(stableKey)) return;
   const now=Date.now();
-  const recentTextKey=groupKey+"|"+senderName+"|"+text.toLocaleLowerCase()+"|"+(audioRef||audioUrl);
+  const recentTextKey=groupKey+"|"+senderName+"|"+text.toLocaleLowerCase()+"|"+(audioRef||audioUrl)+"|"+String(message.messageTimestamp||"");
   const recentAt=recentMessageIds.get(recentTextKey)||0;
   if(recentAt&&now-recentAt<5000) return;
   recentMessageIds.set(stableKey,now);
@@ -670,6 +670,8 @@ async function onTeamsMessage(message,sender) {
   const entry={
     groupName:group.name,groupKey,sender:senderName,text,
     replyTo:String(message.replyTo||""),
+    replyToMessageId:String(message.replyToMessageId||""),
+    messageTimestamp:String(message.messageTimestamp||""),
     isReply:!!message.isReply,
     audioRef,audioUrl,
     sourceTabId:tabId,
@@ -689,7 +691,7 @@ async function onTeamsMessage(message,sender) {
     groupKey,groupName:group.name,
     messages:[{
       sender:senderName,text,messageId:entry.messageId,
-      replyTo:entry.replyTo,replyToMessageId:entry.replyToMessageId,isReply:entry.isReply,
+      replyTo:entry.replyTo,replyToMessageId:entry.replyToMessageId,messageTimestamp:entry.messageTimestamp,isReply:entry.isReply,
       audioRef,audioUrl,sourceTabId:tabId
     }],
     priority:groups.indexOf(group),
