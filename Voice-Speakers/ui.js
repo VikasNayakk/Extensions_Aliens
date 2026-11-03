@@ -411,7 +411,7 @@ async function startTeamsLiveReading() {
     $("teamsStatus").textContent =
       "Listening for new incoming messages. Baseline skipped: " + result.baselineCount +
       " messages; wrapper count: " + result.messageWrappers +
-      "; frame: " + result.frameId + "; source: " + result.rootSelector +
+      "; frame: " + successfulFrame.frameId + "; source: " + result.rootSelector +
       (result.selfNameDetected ? "; own messages filtered." : "; Teams did not expose the signed-in name, so verify your own messages are not announced.");
   } catch (error) {
     $("teamsStatus").textContent = error?.message || "Could not start live reading.";
