@@ -38,3 +38,29 @@ button:focus-visible{outline:2px solid #376af5;outline-offset:2px}
 .top-actions{display:flex;align-items:center;gap:8px}
 .theme-button{padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:600 10px "Segoe UI",Arial,sans-serif;cursor:pointer}
 .theme-button:hover{border-color:#9bb0ee}
+
+
+.group-section{margin-top:15px}
+.add-button{width:100%;padding:10px 12px;border:1px solid #9eb5ee;border-radius:9px;background:#eef3ff;color:#2d56cc;font:650 11px "Segoe UI",Arial,sans-serif;cursor:pointer}
+.add-button:hover{background:#e2eaff}
+.groups{display:flex;flex-direction:column;gap:7px;margin-top:9px;max-height:180px;overflow:auto}
+.group-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.group-info{min-width:0}.group-info strong{display:block;font-size:11px;overflow-wrap:anywhere}.group-info small{display:block;margin-top:2px;color:var(--muted);font-size:9px}
+.group-controls{display:flex;gap:4px;flex-shrink:0}.group-controls button{width:26px;height:26px;border:1px solid var(--line);border-radius:7px;background:transparent;color:var(--ink);font:600 12px "Segoe UI",Arial,sans-serif;cursor:pointer}
+.group-controls button:disabled{opacity:.3;cursor:not-allowed}.group-controls .remove{color:#b54b52}
+.history-prompt{margin-top:9px;padding:11px;border:1px solid #b8c7f4;border-radius:10px;background:#f3f6ff}
+.history-prompt strong{display:block;font-size:11px}.history-prompt p{margin:5px 0 9px;color:var(--muted);font-size:10px}
+.history-actions{display:flex;gap:7px}.history-actions button{flex:1;padding:8px 6px;border-radius:8px;font:600 10px "Segoe UI",Arial,sans-serif;cursor:pointer}.history-actions .primary{border:1px solid transparent;background:var(--blue);color:#fff}.history-actions .secondary{border:1px solid var(--line);background:#fff;color:var(--ink)}
+.hint{margin:8px 2px 0;color:var(--muted);font-size:9px;line-height:1.45}
+.stats{margin-top:13px}
+.stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+.stats>div{padding:10px}
+.stats strong{font-size:19px}
+.event b{display:block;font-size:10px;margin-bottom:2px}
+:root[data-theme="dark"] .add-button{background:#202b43;color:#b7c8ff;border-color:#475d90}
+:root[data-theme="dark"] .group-row{background:#171d27;border-color:var(--line)}
+:root[data-theme="dark"] .group-controls button{background:#1a202b;border-color:#394252;color:#e2e8f2}
+:root[data-theme="dark"] .group-controls .remove{color:#f0959b}
+:root[data-theme="dark"] .history-prompt{background:#1d2940;border-color:#455987}
+:root[data-theme="dark"] .history-actions .secondary{background:#1a202b;color:#e2e8f2;border-color:#394252}
+:root[data-theme="dark"] .add-button:hover{background:#293857}
