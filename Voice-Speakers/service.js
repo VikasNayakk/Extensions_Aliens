@@ -11,6 +11,8 @@ const TEAMS_GROUPS_KEY = "teamsSelectedGroups";
 const TEAMS_READ_COUNT = "teamsReadCount";
 const TEAMS_RECENT_EVENTS = "teamsRecentEvents";
 const recentMessageIds = new Map();
+const processedMessageIds = new Set();
+let processedMessageIdsLoaded = false;
 let speechQueue = [];
 let speechCurrent = null;
 let speechQueueLoaded = false;
@@ -48,7 +50,7 @@ async function getLiveState() {
     teamsSelectedGroups:groups,
     teamsReadCount:saved[TEAMS_READ_COUNT]||0,
     teamsRecentEvents:saved[TEAMS_RECENT_EVENTS]||[],
-    teamsQueueCount:Array.isArray(saved.teamsSpeechQueue)?saved.teamsSpeechQueue.reduce((total,batch)=>total+(Array.isArray(batch.messages)?batch.messages.length:(batch.sender?1:0)),0):0,
+    teamsQueueCount:(Array.isArray(saved.teamsSpeechQueue)?saved.teamsSpeechQueue.reduce((total,batch)=>total+(Array.isArray(batch.messages)?batch.messages.length:(batch.sender?1:0)),0):0)+(saved.teamsSpeechCurrent?.messages?.length||0)-(saved.teamsSpeechCurrent?.messageIndex||0),
     teamsLastStatus:saved.teamsLastStatus||"",
     teamsPopupTheme:saved.teamsPopupTheme||"light"
   };
@@ -332,7 +334,12 @@ async function readLastFive(groupKey) {
   }
   const items=[{
     groupKey:group.key,groupName:group.name,
-    messages:messages.map(message=>({sender:message.sender,text:message.text,messageId:message.key})),
+    messages:messages.map(message=>({
+      sender:message.sender,text:message.text,messageId:message.key,
+      replyTo:message.replyTo||"",isReply:!!message.isReply,
+      audioRef:message.audioRef||"",audioUrl:message.audioUrl||"",
+      sourceTabId:tabId
+    })),
     historyBatch:true,priority:groups.indexOf(group),announceGroup:true,sequence:Date.now()
   }];
   await enqueueSpeech(items);
@@ -605,6 +612,22 @@ async function handleAudioPlaybackEvent(message){
   if(message.type==="TEAMS_AUDIO_FAILED") await setStatus(message.error||"Teams audio playback failed.");
   scheduleNextMessage(350);
 }
+async function wasMessageProcessed(messageKey){
+  if(!processedMessageIdsLoaded){
+    const saved=await chrome.storage.local.get("teamsProcessedMessageIds");
+    (Array.isArray(saved.teamsProcessedMessageIds)?saved.teamsProcessedMessageIds:[]).forEach(key=>processedMessageIds.add(key));
+    processedMessageIdsLoaded=true;
+  }
+  if(processedMessageIds.has(messageKey)) return true;
+  processedMessageIds.add(messageKey);
+  if(processedMessageIds.size>10000){
+    const keep=Array.from(processedMessageIds).slice(-8000);
+    processedMessageIds.clear();
+    keep.forEach(key=>processedMessageIds.add(key));
+  }
+  await chrome.storage.local.set({teamsProcessedMessageIds:Array.from(processedMessageIds)});
+  return false;
+}
 async function onTeamsMessage(message,sender) {
   const enabled=await chrome.storage.local.get(TEAMS_LIVE_KEY);
   if(!enabled[TEAMS_LIVE_KEY]) return;
@@ -625,11 +648,11 @@ async function onTeamsMessage(message,sender) {
 
   const messageId=String(message.messageId||"");
   const stableKey=groupKey+"|"+(messageId||[senderName,text,audioRef,audioUrl,message.timestamp||""].join("|"));
+  if(await wasMessageProcessed(stableKey)) return;
   const now=Date.now();
   const recentTextKey=groupKey+"|"+senderName+"|"+text.toLocaleLowerCase()+"|"+(audioRef||audioUrl);
   const recentAt=recentMessageIds.get(recentTextKey)||0;
-  if(recentAt&&now-recentAt<5000&&messageId.startsWith("teams-toast:")) return;
-  if(recentMessageIds.has(stableKey)) return;
+  if(recentAt&&now-recentAt<5000) return;
   recentMessageIds.set(stableKey,now);
   recentMessageIds.set(recentTextKey,now);
   if(recentMessageIds.size>5000){
