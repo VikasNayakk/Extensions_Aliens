@@ -25,3 +25,13 @@ Use **Refresh** after new messages arrive. The extension reads the currently ope
 - The extension reads visible/rendered conversation messages only.
 - No API key is needed for conversation loading or speech playback.
 - Existing optional AI analysis settings remain available in the extension settings page.
+
+
+## Microsoft Teams live reading
+1. Open Microsoft Teams in Chrome at `teams.cloud.microsoft` or `teams.microsoft.com`.
+2. Open the chat you want to monitor and click the Voice Speakers toolbar icon.
+3. In **Microsoft Teams — Live Reader**, click **Start live reading**.
+4. Keep the side panel open. When a new incoming message appears in the currently open chat, the extension announces: **“Sender name ne kaha: message text.”**
+5. Click **Stop** to stop monitoring and speech.
+
+The monitor starts with a baseline of the messages already on screen, so it does not read old chat history. When you switch to another chat, the new chat's existing messages are skipped and monitoring continues for messages that arrive afterward. Messages sent by you are filtered where Teams exposes an outgoing-message marker. Common password, OTP, API-key and access-token patterns are masked before speech. The extension reads the open chat's rendered UI only; it does not read every chat in the Teams account or access hidden conversations.
