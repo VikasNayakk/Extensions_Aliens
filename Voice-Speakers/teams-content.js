@@ -362,7 +362,8 @@
     if(!text && lines[senderIndex+1]) text=clean(lines[senderIndex+1]);
     if(!text) return null;
     const timeLabel=lines.find(line=>isTimestampLine(line))||"";
-    return {groupName,sender:clean(pair[1]),text:speechText(redact(text)),timeLabel};
+    const media=audioAttachment(card,card,[groupName,pair[1],timeLabel,text].join("|"));
+    return {groupName,sender:clean(pair[1]),text:speechText(redact(text)),timeLabel,...(media||{})};
   }
   function scanToastNotifications(){
     if(!state.running||window.top!==window) return;
@@ -389,7 +390,9 @@
         sender:parsed.sender,
         text:parsed.text,
         timestamp:now,
-        messageId:"teams-toast:"+key
+        messageId:"teams-toast:"+key,
+        audioRef:parsed.audioRef||"",
+        audioUrl:parsed.audioUrl||""
       });
     });
     if(!state.toastPrimed) state.toastPrimed=true;
@@ -468,7 +471,11 @@
           sender:message.sender,
           text:message.text,
           timestamp:message.timestamp,
-          messageId:message.key
+          messageId:message.key,
+          replyTo:message.replyTo||"",
+          isReply:!!message.isReply,
+          audioRef:message.audioRef||"",
+          audioUrl:message.audioUrl||""
         });
       });
 
